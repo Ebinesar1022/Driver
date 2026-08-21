@@ -748,8 +748,17 @@
     ACTIVE_TRIP.tripName = tripField(rec, "tripName") || "";
     ACTIVE_TRIP.vehicleRecordId = tripFieldId(rec, "vehicle") || null;
     ACTIVE_TRIP.vehicleName = tripField(rec, "vehicle") || "";
-    ACTIVE_TRIP.driverRecordId = driver.recordId || null;
-    ACTIVE_TRIP.driverId = driver.id || "";
+    // Prefer the driver lookup ID from the Trip_Dispatch record (this is
+    // usually the Driver_Details record ID). Fall back to the resolved
+    // employee `driver.recordId` if the trip record doesn't contain it.
+    // The Trip record may store a driver lookup (Primary_Driver / Driver_Name)
+    // which links to the Driver_Details form; capture that as
+    // `driverRecordId`. Separately keep the currently-resolved employee
+    // profile record ID (`driver.recordId`) which maps to the
+    // Employee_Form record used by the `Driver` lookup on some forms.
+    ACTIVE_TRIP.driverRecordId = tripFieldId(rec, "primaryDriver") || tripFieldId(rec, "driver") || null;
+    ACTIVE_TRIP.driverEmployeeRecordId = driver.recordId || null;
+    ACTIVE_TRIP.driverId = driver.id || ""; // business Driver ID like DR-001
     ACTIVE_TRIP.driverName = driver.name || "";
     ACTIVE_TRIP.record = rec;
     if (ACTIVE_TRIP.tripId) CURRENT_TRIP_ID = ACTIVE_TRIP.tripId;
@@ -2960,7 +2969,7 @@
 
     var entry = {
       currentLocation: val("#inFuelCurrentLoc"),
-      // liveLocationUrl: val("#inFuelUrl"),
+      liveLocationUrl: val("#inFuelUrl"),
       stationName: val("#inFuelStation"),
       fuelType: val("#inFuelType"),
       litres: qty,
@@ -3002,10 +3011,15 @@
     // and looks like a valid http(s) URL. Sending an invalid/empty value
     // caused Creator to reject the request (see network error code 3001).
     var payloadData = {
-      Vehicle: ACTIVE_TRIP.vehicleRecordId,
-      Trip: ACTIVE_TRIP.tripRecordId,
-      // Driver_ID: ACTIVE_TRIP.driverRecordId,
-      // Driver: ACTIVE_TRIP.driverRecordId,
+      // Many Creator forms in this app accept the display value for
+      // these lookups (business Driver ID and driver name) rather than
+      // the numeric internal record ID — match the same behaviour used
+      // elsewhere by `pushToCreator()` so the dropdowns match Creator's
+      // own options exactly.
+      Vehicle: ACTIVE_TRIP.vehicleRecordId || ACTIVE_TRIP.vehicleName,
+      Trip: ACTIVE_TRIP.tripRecordId || ACTIVE_TRIP.tripId,
+      Driver_ID: ACTIVE_TRIP.driverId || ACTIVE_TRIP.driverRecordId || "",
+      Driver: ACTIVE_TRIP.driverName || ACTIVE_TRIP.driverEmployeeRecordId || "",
       Fuel_Entry_Date_Time: entry.fuelDateTime,
       Fuel_Station: entry.stationName,
       Current_location: entry.currentLocation,
@@ -3016,12 +3030,12 @@
       Odometer_Reading: entry.mileage,
     };
 
-    // var liveUrl = (entry.liveLocationUrl || "").trim();
-    // if (liveUrl) {
-    //   // basic sanity check: must start with http:// or https://
-    //   if (/^https?:\/\//i.test(liveUrl)) payloadData.Live_Location_URL = liveUrl;
-    //   else console.warn(LOG_TAG, 'Skipping Live_Location_URL — not a valid URL:', liveUrl);
-    // }
+    var liveUrl = (entry.liveLocationUrl || "").trim();
+    if (liveUrl) {
+      // basic sanity check: must start with http:// or https://
+      if (/^https?:\/\//i.test(liveUrl)) payloadData.Live_Location_URL = liveUrl;
+      else console.warn(LOG_TAG, 'Skipping Live_Location_URL — not a valid URL:', liveUrl);
+    }
 
     ZOHO.CREATOR.DATA.addRecords({ form_name: "Fuel_Entry", payload: { data: payloadData } })
       .catch(function (err) {
