@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skyway Logistics — Driver Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Isuzu's own truck-badge typeface is a proprietary licensed font and
+     can't be embedded here — Oswald (headings) + Barlow (body) are the
+     closest openly-licensed match to that bold, condensed, industrial
+     signage look used across the Isuzu F-Series. -->
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="Style.css">
+<script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+</head>
+<body>
+
+<!-- ============================ PAGE LOADER ============================ -->
+<div class="page-loader" id="pageLoader" role="status" aria-live="polite">
+  <div class="page-loader__scene">
+    <svg class="page-loader__truck" viewBox="0 0 64 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 26h34V10H2z"/>
+        <path d="M36 16h11l9 8v2H36z"/>
+        <path d="M2 26h52" stroke-width="1.6" opacity=".5"/>
+        <circle class="page-loader__wheel" cx="13" cy="30" r="4.6"/>
+        <circle class="page-loader__wheel" cx="47" cy="30" r="4.6"/>
+      </g>
+    </svg>
+    <div class="page-loader__road"><span></span><span></span><span></span><span></span></div>
+  </div>
+  <p class="page-loader__txt">Loading your dashboard…</p>
+  <div class="page-loader__progress" id="loaderProgress" role="progressbar" aria-label="Dashboard loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="page-loader__progress-fill" id="loaderProgressFill"></div>
+  </div>
+  <p class="page-loader__pct" id="loaderProgressPct">0%</p>
+</div>
+
+<!-- ================= Loader failsafe (inline, no external deps) =================
+     Guarantees the loader always clears, even if css/js fail to load or 404 —
+     this is exactly what previously left the dashboard stuck behind the loader. -->
+<script>
+(function () {
+  var FAILSAFE_MS = 6200;
+  setTimeout(function () {
+    var loader = document.getElementById("pageLoader");
+    if (!loader || loader.classList.contains("is-hidden")) return;
+    var fill = document.getElementById("loaderProgressFill");
+    var pct = document.getElementById("loaderProgressPct");
+    if (fill) fill.style.width = "100%";
+    if (pct) pct.textContent = "100%";
+    loader.classList.add("is-hidden");
+    setTimeout(function () { if (loader.parentNode) loader.remove(); }, 450);
+  }, FAILSAFE_MS);
+})();
+</script>
+
+<!-- ============================ SVG icon sprite ============================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0 5.3 5.2l-8.7 8.7a2.8 2.8 0 0 1-4-4l8.7-8.7z"/><path d="M20 4 16.5 7.5"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9 9 0 0 1-4.2-1L3 20l1.1-4.2A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/></symbol>
+    <symbol id="i-tyre" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2.5"/><path d="M21 10.5v3"/><path d="M6 10.5v3M9.5 10.5v3"/></symbol>
+    <symbol id="i-sat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.5"/><path d="M12 3a9 9 0 0 1 9 9M12 6.5a5.5 5.5 0 0 1 5.5 5.5"/><path d="M4.5 19.5 9 15M3 21l1.5-1.5"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 6.6a5 5 0 0 0-8.8-2 5 5 0 0 0-8.8 2c-1 3.2 1.4 6 4.2 8.6L12 20l4.6-4.8c2.8-2.6 5.2-5.4 4.2-8.6Z"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-fuel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h13M7 8h4"/><path d="M16 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
+  </defs>
+</svg>
+
+<!-- ================================ HEADER ================================ -->
+<header class="hdr">
+  <div class="hdr__brand">
+    <span class="mark" aria-hidden="true"><svg><use href="#i-truck"/></svg></span>
+    <div>
+      <p class="hdr__title">SKYWAY LOGISTICS</p>
+      <p class="hdr__sub">Driver Dashboard</p>
+    </div>
+  </div>
+
+  <div class="hdr__meta">
+    <dl>
+      <div><dt>Driver ID</dt><dd id="hdrDriverId">DR-1042</dd></div>
+      <div><dt>Date</dt><dd id="hdrDate">Friday, 14 August 2026</dd></div>
+    </dl>
+    <div class="hdr__tools">
+      <button class="bell" data-action="alerts" aria-label="Notifications">
+        <svg width="18" height="18"><use href="#i-bell"/></svg>
+        <span class="bell__dot" id="bellDot" hidden></span>
+        <span class="bell__count" id="bellCount" hidden>0</span>
+      </button>
+
+      <!-- driver avatar -->
+      <button class="avbtn" id="btnDriver" aria-expanded="false" aria-controls="panelDriver">
+        <span class="avatar" id="hdrAvatar"><img id="hdrAvatarImg" alt="" hidden><span id="hdrAvatarInitials">--</span></span>
+        <span class="avbtn__txt"><b id="hdrDriverName">Loading…</b><span>Driver details</span></span>
+      </button>
+
+      <!-- trip attended avatar -->
+      <button class="avbtn" id="btnTripAttended" aria-expanded="false" aria-controls="panelAttendance">
+        <span class="avatar avatar--score">
+          <svg width="34" height="34" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="14" fill="#fff" stroke="#E3E8F0" stroke-width="4"/>
+            <circle id="tripAttArc" cx="17" cy="17" r="14" fill="none" stroke="var(--k-blue)" stroke-width="4"
+                    stroke-linecap="round" stroke-dasharray="88" stroke-dashoffset="88"/>
+          </svg>
+          <b id="tripAttMini">—</b>
+        </span>
+        <span class="avbtn__txt"><b>Trip attended</b><span id="tripAttSub">— of —</span></span>
+      </button>
+
+      <!-- driver score avatar -->
+      <button class="avbtn" id="btnScore" aria-expanded="false" aria-controls="panelScore">
+        <span class="avatar avatar--score">
+          <svg width="34" height="34" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="14" fill="#fff" stroke="#E3E8F0" stroke-width="4"/>
+            <circle id="scoreArc" cx="17" cy="17" r="14" fill="none" stroke="#0F9D58" stroke-width="4"
+                    stroke-linecap="round" stroke-dasharray="88" stroke-dashoffset="88"/>
+          </svg>
+          <b id="scoreMini">92</b>
+        </span>
+        <span class="avbtn__txt"><b>Driver score</b><span>Excellent</span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+<!-- ========================================================================
+     VIEW 1 — DASHBOARD
+     ===================================================================== -->
+<div class="view" id="viewDash">
+
+  <!-- Today's trip + Trip attendance — moved to the very top of the
+       dashboard so drivers see them first, above the Start Trip tile.
+       Today's Trip sits on the left, Trip Attendance on the right; on
+       narrow viewports grid-2 collapses to a single column (see
+       Style.css) so both stay readable and correctly stacked. -->
+  <section class="section grid-2">
+    <div class="card">
+      <div class="card__hd"><h2>Today's trip</h2><span class="eyebrow" id="dashTripCountLabel">—</span></div>
+      <div class="card__bd">
+        <ul class="triplist" id="dashTodayTripList"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__hd">
+        <h2>Trip attendance</h2>
+        <button class="btn btn--ghost" id="btnAttSummary" type="button" style="min-height:32px;padding:6px 14px;flex:none;font-size:12.5px">Summary</button>
+      </div>
+      <div class="card__bd">
+        <div class="attsum">
+          <div class="attsum__ring">
+            <svg width="128" height="128">
+              <circle class="ring__c" cx="64" cy="64" r="54"/>
+              <circle class="ring__v" id="dashAttRing" cx="64" cy="64" r="54"
+                      stroke="var(--green)" stroke-dasharray="339" stroke-dashoffset="339"/>
+            </svg>
+            <div class="ring__lbl"><b id="dashAttPct">0%</b><span>Attended</span></div>
+          </div>
+          <div class="attsum__nums">
+            <div><span>Attended / completed</span><b id="dashAttDone">—</b></div>
+            <div><span>Cancelled</span><b id="dashAttCancel">—</b></div>
+            <div><span>Total assigned</span><b id="dashAttTotal">—</b></div>
+          </div>
+        </div>
+
+        <p class="eyebrow" style="margin:18px 0 8px">Other trips</p>
+        <ul class="triplist" id="dashAttList"></ul>
+      </div>
+    </div>
+  </section>
+
+
+
+  <!-- quick actions -->
+  <div class="qa-head">
+  </div>
+  <section class="qa qa--compact" aria-label="Quick driver actions">
+    <button data-nav="documents"><i><svg><use href="#i-doc"/></svg></i>Documents</button>
+    <button data-action="contact"><i><svg><use href="#i-chat"/></svg></i>Contact control</button>
+  </section>
+
+  <!-- KPI tiles — uniform responsive grid, premium 3D tile styling -->
+  <section class="kpis kpis--metrics" aria-label="Key metrics">
+    <button class="kpi kpi--blue" data-action="trip">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-truck"/></svg></span>
+      <p class="kpi__label">Trip status</p>
+      <p class="kpi__val" id="kpiStatus">ASSIGNED</p>
+      <p class="kpi__sub">TR-1048 · VH-208</p>
+    </button>
+
+    <button class="kpi kpi--violet" data-action="deliveries">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-list"/></svg></span>
+      <p class="kpi__label">Deliveries</p>
+      <p class="kpi__val">8 <small>/ 12</small></p>
+      <p class="kpi__sub">67% · 4 remaining</p>
+    </button>
+
+    <button class="kpi kpi--rust" data-action="duty">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-pause"/></svg></span>
+      <p class="kpi__label">Duty hours</p>
+      <p class="kpi__val num" id="kpiDuty">06:42</p>
+      <p class="kpi__sub" id="kpiDutySub">04:18 left</p>
+    </button>
+
+    <button class="kpi kpi--teal" data-action="route">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-pin"/></svg></span>
+      <p class="kpi__label">Distance</p>
+      <p class="kpi__val">486 <small>km</small></p>
+      <p class="kpi__sub">Remaining of 874 km</p>
+    </button>
+
+    <button class="kpi kpi--green" data-action="fuel">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-fuel"/></svg></span>
+      <p class="kpi__label">Fuel</p>
+      <p class="kpi__val">82<small>%</small></p>
+      <p class="kpi__sub">612 km estimated range</p>
+    </button>
+
+    <button class="kpi kpi--green" data-action="pod">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-check"/></svg></span>
+      <p class="kpi__label">Orders delivered</p>
+      <p class="kpi__val">1,284</p>
+      <p class="kpi__sub">Season to date</p>
+    </button>
+
+    <button class="kpi kpi--red" data-action="pod">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-alert"/></svg></span>
+      <p class="kpi__label">Orders pending</p>
+      <p class="kpi__val">161</p>
+      <p class="kpi__sub">Across 14 runs</p>
+    </button>
+
+    <button class="kpi kpi--teal" data-panel="panelTrips">
+      <span class="kpi__icon" aria-hidden="true"><svg width="18" height="18"><use href="#i-list"/></svg></span>
+      <p class="kpi__label">Driver's today's trips</p>
+      <p class="kpi__val" id="kpiTodayTrips">4</p>
+      <p class="kpi__sub" id="kpiTodayTripsSub">1 active · 2 done · 1 scheduled</p>
+    </button>
+  </section>
+
+  <!-- Today's activity (Alerts & notifications now live in the header bell) -->
+  <section class="section">
+    <div class="card">
+      <div class="card__hd"><h2>Today's activity</h2><span class="eyebrow">6 events</span></div>
+      <div class="card__bd">
+        <ul class="tl">
+          <li class="done"><p class="tl__t">12:20</p><p class="tl__x">Delivery #8 completed</p></li>
+          <li class="done"><p class="tl__t">11:40</p><p class="tl__x">Fuel entry recorded — 214 L</p></li>
+          <li class="done"><p class="tl__t">10:25</p><p class="tl__x">Delivery #6 completed</p></li>
+          <li class="done"><p class="tl__t">09:35</p><p class="tl__x">Rest break logged — 45 min</p></li>
+          <li class="done"><p class="tl__t">07:45</p><p class="tl__x">Hub check-out</p></li>
+          <li class="done"><p class="tl__t">06:30</p><p class="tl__x">Duty commenced</p></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">Skyway Logistics · Driver Command Center · Your work diary remains the legal record.</p>
+</div>
+
+<!-- ========================================================================
+     VIEW — DRIVER DOCUMENTS
+     Opened from either "Documents" entry point (dashboard quick action or
+     the Driver Information panel's "View documents" button). Shows only
+     the four document types stored on this driver's own Driver_Details
+     record in Zoho Creator (Medical Certificate, Licence Document,
+     Right to Work Document, Identity Document Copy) — every link resolves
+     straight from that record's attachment field, never a placeholder.
+     ===================================================================== -->
+<div class="view" id="viewDocuments" hidden>
+  <button class="backlink" data-nav="dash"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <h1>Driver documents</h1>
+    <p>Original documents on file for <b id="docsDriverName">—</b> (<span id="docsDriverId">—</span>) in Zoho Creator.</p>
+  </div>
+
+  <div class="doc-warn" id="docsLookupNote" hidden>
+    <svg width="17" height="17"><use href="#i-alert"/></svg> <span id="docsLookupNoteText"></span>
+  </div>
+
+  <section class="docgrid" id="docsGrid" aria-label="Driver documents">
+    <article class="doccard" id="docCardMedical">
+      <span class="doccard__icon"><svg width="20" height="20"><use href="#i-heart"/></svg></span>
+      <div class="doccard__body">
+        <b>Medical Certificate</b>
+        <span class="doccard__status" id="docStatusMedical">Loading…</span>
+      </div>
+      <a class="btn btn--ghost doccard__open" id="docLinkMedical" href="#" target="_blank" rel="noopener" aria-disabled="true">Open</a>
+    </article>
+
+    <article class="doccard" id="docCardLicence">
+      <span class="doccard__icon"><svg width="20" height="20"><use href="#i-doc"/></svg></span>
+      <div class="doccard__body">
+        <b>Licence Document</b>
+        <span class="doccard__status" id="docStatusLicence">Loading…</span>
+      </div>
+      <a class="btn btn--ghost doccard__open" id="docLinkLicence" href="#" target="_blank" rel="noopener" aria-disabled="true">Open</a>
+    </article>
+
+    <article class="doccard" id="docCardRtw">
+      <span class="doccard__icon"><svg width="20" height="20"><use href="#i-shield"/></svg></span>
+      <div class="doccard__body">
+        <b>Right to Work Document</b>
+        <span class="doccard__status" id="docStatusRtw">Loading…</span>
+      </div>
+      <a class="btn btn--ghost doccard__open" id="docLinkRtw" href="#" target="_blank" rel="noopener" aria-disabled="true">Open</a>
+    </article>
+
+    <article class="doccard" id="docCardIdentity">
+      <span class="doccard__icon"><svg width="20" height="20"><use href="#i-doc"/></svg></span>
+      <div class="doccard__body">
+        <b>Identity Document Copy</b>
+        <span class="doccard__status" id="docStatusIdentity">Loading…</span>
+      </div>
+      <a class="btn btn--ghost doccard__open" id="docLinkIdentity" href="#" target="_blank" rel="noopener" aria-disabled="true">Open</a>
+    </article>
+  </section>
+
+  <p class="foot">Documents shown are the original files stored on your Driver record — nothing here is generated or altered.</p>
+</div>
+
+<!-- ========================================================================
+     VIEW 2A — VEHICLE CHECK-IN (pre-trip inspection)
+     ===================================================================== -->
+<div class="view" id="viewVcheck" hidden>
+  <button class="backlink" data-nav="dash"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <h1>Vehicle check-in</h1>
+    <p>Tap each to open it, All five checks must be verified before the trip can start.</p>
+  </div>
+
+  <div class="checkprogress checkprogress--top">
+    <div class="checkprogress__hd">
+      <p class="checkprogress__lbl">Inspection progress</p>
+      <p class="checkprogress__pct"><b id="vcPassed">0 / 5</b> checks verified</p>
+    </div>
+    <div class="checkprogress__bar"><i id="vcProgress" style="width:0%"></i></div>
+    <p class="checkprogress__foot"><b id="vcDefects">0</b> defects flagged · <b id="vcResult">Incomplete</b></p>
+  </div>
+
+  <!-- Check cards — each opens its own page -->
+  <section class="qa qa--checks" aria-label="Vehicle checks">
+    <button data-nav="chktyres" data-check-card="tyres">
+      <i><svg><use href="#i-tyre"/></svg></i>
+      <span class="qa__label">Tyres</span>
+      <span class="qa__state" data-kpi-state="tyres">Not checked</span>
+    </button>
+    <button data-check-card="battery" data-nav="chkbattery">
+      <i><svg><use href="#i-battery"/></svg></i>
+      <span class="qa__label">Battery</span>
+      <span class="qa__state" data-kpi-state="battery">Not checked</span>
+    </button>
+    <button data-check-card="fuel" data-nav="chkfuel">
+      <i><svg><use href="#i-fuel"/></svg></i>
+      <span class="qa__label">Fuel</span>
+      <span class="qa__state" data-kpi-state="fuel">Not checked</span>
+    </button>
+    <button data-check-card="gps" data-nav="chkgps">
+      <i><svg><use href="#i-sat"/></svg></i>
+      <span class="qa__label">GPS</span>
+      <span class="qa__state" data-kpi-state="gps">Not checked</span>
+    </button>
+    <button data-check-card="health" data-nav="chkhealth">
+      <i><svg><use href="#i-heart"/></svg></i>
+      <span class="qa__label">Driver health</span>
+      <span class="qa__state" data-kpi-state="health">Not checked</span>
+    </button>
+  </section>
+
+  <div class="btnrow" style="margin-top:18px">
+    <button class="btn btn--go" id="btnStartTripCta" style="width:100%" data-nav="start" disabled>
+      <svg width="18" height="18" aria-hidden="true"><use href="#i-truck"/></svg>
+      <span>Start Trip</span>
+    </button>
+  </div>
+
+  <!-- Tyres -->
+
+  <!-- Battery -->
+
+  <!-- Fuel -->
+
+  <!-- GPS -->
+
+  <!-- Driver health -->
+
+</div>
+
+<!-- ========================================================================
+     VEHICLE CHECK — Tyres
+     ===================================================================== -->
+<div class="view" id="viewVctyres" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Pre-trip check</p>
+    <h1>Tyres</h1>
+  </div>
+
+</div>
+
+<!-- ========================================================================
+     VEHICLE CHECK — Battery
+     ===================================================================== -->
+<div class="view" id="viewVcbattery" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Pre-trip check</p>
+    <h1>Battery</h1>
+  </div>
+
+</div>
+
+<!-- ========================================================================
+     VEHICLE CHECK — Fuel
+     ===================================================================== -->
+<div class="view" id="viewVcfuel" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Pre-trip check</p>
+    <h1>Fuel</h1>
+  </div>
+
+</div>
+
+<!-- ========================================================================
+     VEHICLE CHECK — GPS
+     ===================================================================== -->
+<div class="view" id="viewVcgps" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back to vehicle checks</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Pre-trip check</p>
+    <h1>GPS</h1>
+  </div>
+
+</div>
+
+<!-- ========================================================================
+     VEHICLE CHECK — Driver health
+     ===================================================================== -->
+<div class="view" id="viewVchealth" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back to vehicle checks</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Pre-trip check</p>
+    <h1>Driver health</h1>
+  </div>
+
+</div>
+
+<!-- ========================================================================
+     CHECK — Tyres
+     ===================================================================== -->
+<div class="view" id="viewChktyres" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back to vehicle check</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle check</p>
+    <h1>Tyres</h1>
+    <p>Check pressure, tread depth and visual condition on all axles.</p>
+  </div>
+  <div class="card formcard checkcard" data-check="tyres">
+    <div class="card__hd">
+      <h2><span class="checknum">1</span> Tyres</h2>
+      <div class="card__hd-right">
+        <label class="tyrefilter" for="tyreCountFilter">
+          <span class="tyrefilter__label">Tyre filter</span>
+          <select id="tyreCountFilter" class="tyrefilter__select" aria-label="Select number of tyres on the vehicle">
+            <option value="6">6 Tyres</option>
+            <option value="8">8 Tyres</option>
+            <option value="12">12 Tyres</option>
+            <option value="16">16 Tyres</option>
+          </select>
+        </label>
+        <span class="checkpill" data-pill="tyres">Not checked</span>
+      </div>
+    </div>
+    <div class="card__bd">
+      <div class="field tyre3d-wrap" id="fTyrePress">
+
+        <div class="veh3d" id="veh3dViewer">
+          <div class="veh3d__toolbar">
+            <span class="veh3d__sidepill"><i class="veh3d__dot" aria-hidden="true"></i><span id="veh3dSideLabel">Drag to rotate</span></span>
+            <button type="button" class="veh3d__navbtn" id="veh3dReset" aria-label="Reset the 3D view">
+              <svg width="16" height="16" aria-hidden="true"><use href="#i-reset"/></svg>
+            </button>
+          </div>
+
+          <div class="veh3d__scene" id="veh3dScene">
+            <canvas id="veh3dCanvas" class="veh3d__canvas" role="img" aria-label="Interactive 3D model of the truck. Drag to rotate it, then tap a tyre to record its pressure."></canvas>
+
+            <!-- Accessible / no-WebGL fallback: same tyre buttons and popup wiring as the 3D hotspots -->
+            <div class="veh3d__fallback" id="veh3dFallback" hidden>
+              <p class="veh3d__fallback-note">3D view isn't available on this device — select a tyre below.</p>
+              <div class="veh3d__fallback-grid">
+                <button type="button" class="tyre3d__tyre" data-tyre="fl" aria-label="Front left tyre pressure">
+                  <span class="tyre3d__ring"><svg viewBox="0 0 24 24"><use href="#i-tyre"/></svg></span>
+                  <span class="tyre3d__pos">FL</span>
+                  <span class="tyre3d__badge" data-badge="fl">Tap to add</span>
+                </button>
+                <button type="button" class="tyre3d__tyre" data-tyre="fr" aria-label="Front right tyre pressure">
+                  <span class="tyre3d__ring"><svg viewBox="0 0 24 24"><use href="#i-tyre"/></svg></span>
+                  <span class="tyre3d__pos">FR</span>
+                  <span class="tyre3d__badge" data-badge="fr">Tap to add</span>
+                </button>
+                <button type="button" class="tyre3d__tyre" data-tyre="rl" aria-label="Rear left tyre pressure">
+                  <span class="tyre3d__ring"><svg viewBox="0 0 24 24"><use href="#i-tyre"/></svg></span>
+                  <span class="tyre3d__pos">RL</span>
+                  <span class="tyre3d__badge" data-badge="rl">Tap to add</span>
+                </button>
+                <button type="button" class="tyre3d__tyre" data-tyre="rr" aria-label="Rear right tyre pressure">
+                  <span class="tyre3d__ring"><svg viewBox="0 0 24 24"><use href="#i-tyre"/></svg></span>
+                  <span class="tyre3d__pos">RR</span>
+                  <span class="tyre3d__badge" data-badge="rr">Tap to add</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="veh3d__shadow" aria-hidden="true"></div>
+        </div>
+
+        <p class="tyre3d-summary" id="tyre3dSummary">0 of 4 tyres recorded</p>
+        <input type="hidden" id="inTyrePress">
+      </div>
+
+      <label class="field" id="fTyreSpare">
+        <span>Spare tyres taken for the trip</span>
+        <input type="number" id="inTyreSpare" min="0" max="4" step="1" placeholder="e.g. 1">
+      </label>
+
+      <label class="field" id="fTyreCond">
+        <span>Tyre condition</span>
+        <select id="inTyreCond">
+          <option value="">Select condition…</option>
+          <option value="Good">Good</option>
+          <option value="Bad">Bad</option>
+          <option value="Change">Change</option>
+        </select>
+      </label>
+      <p class="formerr" data-err="tyres" hidden></p>
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="vcheck">Cancel</button>
+        <button class="btn btn--primary" data-check-verify="tyres">Verify tyres</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     CHECK — Battery
+     ===================================================================== -->
+<div class="view" id="viewChkbattery" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle check</p>
+    <h1>Battery</h1>
+    <p>Confirm the battery is holding charge and the terminals are sound.</p>
+  </div>
+  <div class="card formcard checkcard" data-check="battery">
+    <div class="card__hd">
+      <h2><span class="checknum">2</span> Battery</h2>
+      <span class="checkpill" data-pill="battery">Not checked</span>
+    </div>
+    <div class="card__bd">
+      <label class="field" id="fBattCond">
+        <span>Battery condition</span>
+        <select id="inBattCond">
+          <option value="">Select condition…</option>
+          <option value="Good">Good</option>
+          <option value="Bad">Bad</option>
+          <option value="Change">Change</option>
+        </select>
+      </label>
+
+      <div class="field" id="fBattFunc">
+        <span>Battery functionality</span>
+        <div class="yn-toggle" data-yn-target="inBattFunc">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inBattFunc">
+      </div>
+      <p class="formerr" data-err="battery" hidden></p>
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="vcheck">Cancel</button>
+        <button class="btn btn--primary" data-check-verify="battery">Verify battery</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     CHECK — Fuel
+     ===================================================================== -->
+<div class="view" id="viewChkfuel" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle check</p>
+    <h1>Fuel</h1>
+  </div>
+  <div class="card formcard checkcard" data-check="fuel">
+    <div class="card__hd">
+      <h2><span class="checknum">3</span> Fuel</h2>
+      <span class="checkpill" data-pill="fuel">Not checked</span>
+    </div>
+    <div class="card__bd">
+      <label class="field" id="fVcFuelType">
+        <span>Fuel type</span>
+        <select id="inVcFuelType">
+          <option value="">Select fuel type…</option>
+          <option value="Diesel">Diesel</option>
+          <option value="Petrol">Petrol</option>
+          <option value="Electric">Electric</option>
+          <option value="CNG">CNG</option>
+          <option value="Hybrid">Hybrid</option>
+        </select>
+      </label>
+
+      <label class="field" id="fFuelPct">
+        <span>Current fuel percentage</span>
+        <input type="number" id="inVcFuelLevel" min="0" max="100" step="1" placeholder="e.g. 82">
+        <small>You need at least 25% to depart on a long-haul run.</small>
+      </label>
+
+      <div class="field" id="fFuelOk">
+        <span>Fuel condition for trip</span>
+        <div class="yn-toggle" data-yn-target="inFuelOk">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inFuelOk">
+      </div>
+      <p class="formerr" data-err="fuel" hidden></p>
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="vcheck">Cancel</button>
+        <button class="btn btn--primary" data-check-verify="fuel">Verify fuel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     CHECK — GPS
+     ===================================================================== -->
+<div class="view" id="viewChkgps" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle check</p>
+    <h1>GPS</h1>
+  </div>
+  <div class="card formcard checkcard" data-check="gps">
+    <div class="card__hd">
+      <h2><span class="checknum">4</span> GPS</h2>
+      <span class="checkpill" data-pill="gps">Not checked</span>
+    </div>
+    <div class="card__bd">
+      <div class="field" id="fGpsFixed">
+        <span>GPS fixed and working</span>
+        <div class="yn-toggle" data-yn-target="inGpsFixed">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inGpsFixed">
+      </div>
+
+      <label class="field" id="fGpsId">
+        <span>GPS ID</span>
+        <input type="text" id="inGpsUnit" value="TLM-208-A">
+      </label>
+
+      <label class="field" id="fGpsCond">
+        <span>GPS condition</span>
+        <select id="inGpsCond">
+          <option value="">Select condition…</option>
+          <option value="Good">Good — locked and tracking</option>
+          <option value="Weak">Weak — intermittent signal</option>
+          <option value="Faulty">Faulty — no signal / unit fault</option>
+        </select>
+      </label>
+      <p class="formerr" data-err="gps" hidden></p>
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="vcheck">Cancel</button>
+        <button class="btn btn--primary" data-check-verify="gps">Verify gps</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     CHECK — Driver health
+     ===================================================================== -->
+<div class="view" id="viewChkhealth" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle check</p>
+    <h1>Driver health</h1>
+  </div>
+  <div class="card formcard checkcard" data-check="health">
+    <div class="card__hd">
+      <h2><span class="checknum">5</span> Driver health</h2>
+      <span class="checkpill" data-pill="health">Not checked</span>
+    </div>
+    <div class="card__bd">
+      <div class="field" id="fHealthDrive">
+        <span>Driver condition for driving</span>
+        <div class="yn-toggle" data-yn-target="inHealthDrive">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inHealthDrive">
+      </div>
+
+      <label class="field" id="fHealthFatigue">
+        <select id="inHealthFatigue">
+          <option value="">Select level…</option>
+          <option value="Pass">Alert — fit to drive</option>
+          <option value="Monitor">Slightly tired — fit with breaks</option>
+          <option value="Defect">Fatigued — not fit to drive</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Notes</span>
+        <input type="text" id="inVcNotes" placeholder="Anything else to record (optional)">
+      </label>
+
+      <p class="formerr" data-err="health" hidden></p>
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="vcheck">Cancel</button>
+        <button class="btn btn--primary" data-check-verify="health">Verify driver health</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 2 — TRIP START
+     ===================================================================== -->
+<div class="view" id="viewStart" hidden>
+  <button class="backlink" data-nav="vcheck"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back</span></button>
+  <div class="pagehead">
+    <h1>Start trip <span id="startTripId">TR-1048</span></h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Trip start</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <div class="trip-hero" style="margin-bottom:16px">
+        <div class="trip-hero__row">
+          <div><p class="eyebrow">Trip ID</p><p class="num" id="startTripIdBig">TR-1048</p></div>
+        </div>
+      </div>
+      <p class="formnote" id="startBfmNote">Loading your BFM configuration…</p>
+
+      <label class="field" id="fStart">
+        <span>Start time</span>
+        <input type="time" id="inStart" step="60" required>
+      </label>
+
+      <label class="field" id="fStartLoc">
+        <span>Live location</span>
+        <input type="text" id="inStartLoc" placeholder="e.g. Skyway Depot, Eastern Creek NSW">
+      </label>
+
+      <label class="field" id="fStartUrl">
+        <span>Live location URL</span>
+        <input type="text" id="inStartUrl" placeholder="https://maps.google.com/…">
+        <small>Tap "Use my location" to fill both fields from your device GPS.</small>
+      </label>
+
+            <div class="btnrow" style="margin-bottom:16px">
+        <button class="btn btn--ghost" data-geo="start">Use my location</button>
+      </div>
+
+      <label class="field" id="fEndLoc">
+        <span>End location</span>
+        <input type="text" id="inEndLoc" readonly placeholder="Fetched from the assigned trip's To Location">
+        <small>Fetched automatically from this trip's To Location in Trip &amp; Dispatch.</small>
+      </label>
+
+      <label class="field" id="fStartOdo">
+        <span>Starting odometer reading</span>
+        <input type="number" id="inStartOdo" min="0" step="1" placeholder="e.g. 184230" required>
+      </label>
+
+      <p class="formerr" id="startErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveTimes">Save & open trip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 3 — TRIP PAGE (no map)
+     ===================================================================== -->
+<div class="view" id="viewTrip" hidden>
+  <div class="pagehead pagehead--flex">
+    <div>
+      <p class="eyebrow">Assigned trip</p>
+      <h1><span id="atdHeaderTripId">—</span> · <span id="atdHeaderRoute">—</span></h1>
+      <p>Trip running since <b class="num" id="tripStartedAt">—</b>. </p>
+    </div>
+    <div class="triptimer" id="tripTimerBox" aria-live="polite">
+      <span class="triptimer__label">Trip timer</span>
+      <span class="triptimer__val num" id="tripTimerVal">00:00:00</span>
+    </div>
+    <button class="btn btn--break" data-nav="break">
+      <svg width="17" height="17" aria-hidden="true"><use href="#i-pause"/></svg>
+      <span>Log a break</span>
+    </button>
+  </div>
+
+  <!-- Trip quick actions — moved here from the main dashboard -->
+  <section class="tqa" aria-label="Trip quick actions">
+    <button class="tqa__card tqa__card--blue" data-nav="checkin">
+      <span class="tqa__icon"><svg width="20" height="20"><use href="#i-pin"/></svg></span>
+      <span class="tqa__label">Hub Check-In/Out</span>
+    </button>
+    <button class="tqa__card tqa__card--teal" data-nav="fuel">
+      <span class="tqa__icon"><svg width="20" height="20"><use href="#i-fuel"/></svg></span>
+      <span class="tqa__label">Fuel entry</span>
+    </button>
+    <button class="tqa__card tqa__card--red" data-nav="incident">
+      <span class="tqa__icon"><svg width="20" height="20"><use href="#i-alert"/></svg></span>
+      <span class="tqa__label">Report incident</span>
+    </button>
+    <button class="tqa__card tqa__card--amber" data-nav="vehicleissue">
+      <span class="tqa__icon"><svg width="20" height="20"><use href="#i-wrench"/></svg></span>
+      <span class="tqa__label">Vehicle issue</span>
+    </button>
+    <button class="tqa__card tqa__card--violet" data-nav="break">
+      <span class="tqa__icon"><svg width="20" height="20"><use href="#i-pause"/></svg></span>
+      <span class="tqa__label">Break</span>
+    </button>
+  </section>
+
+  <section class="kpis" style="margin-bottom:8px">
+    <button class="kpi" data-action="trip">
+      <p class="kpi__label">Trip status</p>
+      <p class="kpi__val" style="font-size:26px">IN TRANSIT</p>
+      <p class="kpi__sub" id="tripWindow">06:30 – 16:35</p>
+    </button>
+    <button class="kpi kpi--violet" data-action="deliveries">
+      <p class="kpi__label">Stops completed</p>
+      <p class="kpi__val">8 <small>/ 12</small></p>
+      <p class="kpi__sub">Next: stop #9</p>
+    </button>
+    <button class="kpi kpi--rust" data-action="duty">
+      <p class="kpi__label">Driving time</p>
+      <p class="kpi__val num" id="tripDriving">06:42</p>
+      <p class="kpi__sub" id="tripDrivingSub">Since duty commenced</p>
+    </button>
+    <button class="kpi kpi--teal" data-action="route">
+      <p class="kpi__label">Distance left</p>
+      <p class="kpi__val">388 <small>km</small></p>
+      <p class="kpi__sub">Of 874 km total</p>
+    </button>
+  </section>
+
+  <section class="section grid-2">
+    <div class="card">
+      <div class="card__hd"><h2>Trip details</h2><span class="duty-pill"><i class="pulse"></i> In transit</span></div>
+      <div class="card__bd">
+        <div class="trip-hero">
+          <div class="trip-hero__row">
+            <div><p class="eyebrow">Trip ID</p><p class="num" id="atdTripId">—</p></div>
+            <span class="trip-hero__pill" id="atdRoutePill">—</span>
+          </div>
+        </div>
+        <dl class="deflist">
+          <div><dt>Trip Name</dt><dd id="atdTripName">—</dd></div>
+          <div><dt>Trip Type</dt><dd id="atdTripType">—</dd></div>
+          <div><dt>Trip Status</dt><dd id="atdTripStatus">—</dd></div>
+          <div><dt>Route</dt><dd id="atdRoute">—</dd></div>
+          <div><dt>Booking Date</dt><dd class="num" id="atdBookingDate">—</dd></div>
+          <div><dt>Planned Delivery Date</dt><dd class="num" id="atdPlannedDelivery">—</dd></div>
+          <div><dt>Delivery Mode</dt><dd id="atdDeliveryMode">—</dd></div>
+          <div><dt>Vehicle</dt><dd id="atdVehicle">—</dd></div>
+          <div><dt>Vehicle Capacity</dt><dd class="num" id="atdVehicleCapacity">—</dd></div>
+          <div><dt>Supervisor</dt><dd id="atdSupervisor">—</dd></div>
+          <div><dt>Primary Driver</dt><dd id="atdPrimaryDriver">—</dd></div>
+          <div><dt>Secondary Driver</dt><dd id="atdSecondaryDriver">—</dd></div>
+          <div><dt>Pickup Location</dt><dd id="atdPickupLocation">—</dd></div>
+          <div><dt>Delivery Location</dt><dd id="atdDeliveryLocation">—</dd></div>
+          <div><dt>Quantity</dt><dd class="num" id="atdQuantity">—</dd></div>
+          <div><dt>Weight</dt><dd class="num" id="atdWeight">—</dd></div>
+          <div><dt>Tracking Number</dt><dd id="atdTrackingNumber">—</dd></div>
+          <div><dt>From Location</dt><dd id="atdFromLocation">—</dd></div>
+          <div><dt>Start Date &amp; Time</dt><dd class="num" id="atdStartDateTime">—</dd></div>
+          <div><dt>Estimated Distance (KM)</dt><dd class="num" id="atdEstimatedDistance">—</dd></div>
+          <div><dt>Total Loaded Weight</dt><dd class="num" id="atdTotalLoadedWeight">—</dd></div>
+          <div><dt>Trip Completion Date &amp; Time</dt><dd class="num" id="atdTripCompletion">—</dd></div>
+          <div><dt>To Location</dt><dd id="atdToLocation">—</dd></div>
+          <div><dt>Trip Duration</dt><dd class="num" id="atdTripDuration">—</dd></div>
+          <div><dt>Driver</dt><dd id="tripDriverLabel">Loading…</dd></div>
+          <div><dt>Start location (live)</dt><dd id="tripStartLoc">—</dd></div>
+          <div><dt>End location (live)</dt><dd id="tripEndLoc">—</dd></div>
+          <div><dt>Start time (live)</dt><dd class="num" id="tripStart">—</dd></div>
+          <div><dt>End time (live)</dt><dd class="num" id="tripEnd">—</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__hd">
+        <h2>Hubs &amp; stops</h2>
+        <span class="eyebrow"><b id="hubIndexLabel">Stop 9</b> of <span id="hubTotal">12</span></span>
+      </div>
+      <div class="card__bd">
+        <!-- current / next summary -->
+        <div class="hubpair">
+          <div class="hubpair__item is-current">
+            <p class="eyebrow">Current hub</p>
+            <p class="hubpair__name" id="hubCurrentName">Albury Hub</p>
+            <p class="hubpair__meta" id="hubCurrentMeta">Departed 11:58 · Stop #8</p>
+          </div>
+          <span class="hubpair__arrow" aria-hidden="true">→</span>
+          <div class="hubpair__item is-next">
+            <p class="eyebrow">Next hub</p>
+            <p class="hubpair__name" id="hubNextName">Seymour Hub</p>
+            <p class="hubpair__meta" id="hubNextMeta">18.4 km · ETA 02:15 PM</p>
+          </div>
+        </div>
+
+        <!-- hub pipeline / timeline: sequence of hubs from origin to destination -->
+        <div class="hubnav">
+          <button class="hubnav__btn" id="hubPrev" aria-label="Previous hub">
+            <svg width="18" height="18"><use href="#i-chev"/></svg>
+          </button>
+          <div class="hubpipeline" id="hubPipeline" role="tablist" aria-label="Hub sequence"></div>
+          <button class="hubnav__btn hubnav__btn--next" id="hubNext" aria-label="Next hub">
+            <svg width="18" height="18"><use href="#i-chev"/></svg>
+          </button>
+        </div>
+
+        <!-- selected hub detail -->
+        <div class="hubdetail" id="hubDetail">
+          <div class="hubdetail__hd">
+            <div>
+              <span class="hubdetail__badge" id="hubBadge">Stop #9</span>
+              <p class="stop__name" id="hubName">Seymour Hub</p>
+              <p class="hubdetail__loc" id="hubLocation">Emily Street, Seymour VIC 3660</p>
+            </div>
+            <span class="hubstatus" id="hubStatus">Next</span>
+          </div>
+
+          <div class="stop__meta">
+            <div><span>ETA</span><b id="hubEta">02:15 PM</b></div>
+          </div>
+
+          <div class="btnrow" style="margin-top:16px">
+            <button class="btn btn--ghost" data-nav="checkin">Check in here</button>
+            <button class="btn btn--primary" id="btnHubPod">Create POD</button>
+          </div>
+        </div>
+
+        <div class="ring-wrap" style="padding-top:18px;margin-top:18px;border-top:1px solid var(--line)">
+          <div class="ring">
+            <svg width="118" height="118">
+              <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1E6FE8"/><stop offset="100%" stop-color="#0F9D58"/></linearGradient></defs>
+              <circle class="ring__c" cx="59" cy="59" r="50"/>
+              <circle class="ring__v" id="ringV" cx="59" cy="59" r="50" stroke-dasharray="314" stroke-dashoffset="314"/>
+            </svg>
+            <div class="ring__lbl"><b id="ringPct">0%</b><span>Complete</span></div>
+          </div>
+          <div class="tally">
+            <div><span>Delivered</span><b>8</b></div>
+            <div><span>Pending</span><b>4</b></div>
+            <div><span>Failed</span><b style="color:var(--green)">0</b></div>
+            <div><span>On time</span><b style="color:var(--green)">100%</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live trip map -->
+  <section class="section">
+    <div class="card">
+      <div class="card__hd">
+        <h2>Live trip map</h2>
+        <div class="maphd__tools">
+          <select class="mapfilter" id="mapHubFilter" aria-label="Filter by hub">
+            <option value="">All hubs</option>
+          </select>
+          <span class="chip-live"><i class="pulse"></i> Tracking VH-208</span>
+        </div>
+      </div>
+      <div class="card__bd">
+        <div class="tripmap">
+          <svg class="tripmap__svg" viewBox="0 0 760 420" role="img"
+               aria-label="Trip route from Eastern Creek to Tullamarine showing hubs, vehicle position, next stop, start and end locations.">
+            <defs>
+              <linearGradient id="routeGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#3B82F6"/>
+                <stop offset="55%" stop-color="#14B8A6"/>
+                <stop offset="100%" stop-color="#22C55E"/>
+              </linearGradient>
+              <linearGradient id="mapSky" x1="0" y1="0" x2="0.4" y2="1">
+                <stop offset="0%" stop-color="#F7FAFD"/>
+                <stop offset="100%" stop-color="#EDF2F7"/>
+              </linearGradient>
+              <linearGradient id="mapWater" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#DCEAF6"/>
+                <stop offset="100%" stop-color="#CFE1F2"/>
+              </linearGradient>
+              <pattern id="mapGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+                <path d="M48 0H0V48" fill="none" stroke="rgba(15,39,72,.045)" stroke-width="1"/>
+              </pattern>
+              <filter id="routeGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="6" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="pinShadow" x="-60%" y="-60%" width="220%" height="220%">
+                <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#0F2748" flood-opacity=".28"/>
+              </filter>
+            </defs>
+
+            <rect width="760" height="420" fill="url(#mapSky)"/>
+            <rect width="760" height="420" fill="url(#mapGrid)"/>
+
+            <!-- landmass / water separation, purely indicative -->
+            <path d="M760 0 L760 200 C660 236, 560 268, 470 300 C380 332, 250 372, 190 420 L760 420 Z"
+                  fill="url(#mapWater)" opacity=".75"/>
+            <path d="M760 200 C660 236, 560 268, 470 300 C380 332, 250 372, 190 420"
+                  fill="none" stroke="rgba(59,130,246,.22)" stroke-width="1.5"/>
+
+            <!-- inland corridor shading -->
+            <path d="M700 30 C620 90, 540 140, 440 190 C340 240, 220 300, 120 380"
+                  fill="none" stroke="rgba(15,39,72,.05)" stroke-width="42" stroke-linecap="round"/>
+
+            <!-- planned route (dashed = not yet driven) -->
+            <path id="mapRoute"
+                  d="M654 66 C600 118, 548 150, 486 176 C420 204, 356 228, 300 262 C244 296, 176 322, 118 352"
+                  fill="none" stroke="rgba(30,111,232,.26)" stroke-width="4"
+                  stroke-linecap="round" stroke-dasharray="2 11"/>
+
+            <!-- driven portion, animated on view entry -->
+            <path id="mapProgress"
+                  d="M654 66 C600 118, 548 150, 486 176 C420 204, 356 228, 300 262 C244 296, 176 322, 118 352"
+                  fill="none" stroke="url(#routeGrad)" stroke-width="5" stroke-linecap="round"
+                  filter="url(#routeGlow)"/>
+
+            <!-- hubs along the corridor — populated from HUBS at render time -->
+            <g class="tripmap__hubs" id="tripmapHubs"></g>
+
+            <!-- start -->
+            <g class="mpin mpin--start" filter="url(#pinShadow)">
+              <circle cx="654" cy="66" r="11"/>
+              <circle class="mpin__core" cx="654" cy="66" r="4.5"/>
+              <text x="654" y="42">START · Eastern Creek</text>
+            </g>
+
+            <!-- next stop -->
+            <g class="mpin mpin--next" filter="url(#pinShadow)">
+              <circle class="mpin__halo" cx="212" cy="312" r="19"/>
+              <circle cx="212" cy="312" r="11"/>
+              <circle class="mpin__core" cx="212" cy="312" r="4.5"/>
+              <text x="212" y="344">NEXT STOP · Stop #9</text>
+            </g>
+
+            <!-- end -->
+            <g class="mpin mpin--end" filter="url(#pinShadow)">
+              <circle cx="118" cy="352" r="11"/>
+              <circle class="mpin__core" cx="118" cy="352" r="4.5"/>
+              <text x="118" y="384">END · Tullamarine</text>
+            </g>
+
+            <!-- current vehicle position -->
+            <g class="mveh" id="mapVehicle" transform="translate(300,262)">
+              <circle class="mveh__pulse" r="21"/>
+              <circle class="mveh__ring" r="15"/>
+              <circle class="mveh__dot" r="9"/>
+              <text y="-27">VH-208 · 92 km/h</text>
+            </g>
+          </svg>
+
+          <ul class="maplegend">
+            <li><i class="lg lg--start"></i> Start location</li>
+            <li><i class="lg lg--hub"></i> Hubs</li>
+            <li><i class="lg lg--veh"></i> Current location</li>
+            <li><i class="lg lg--next"></i> Next stop</li>
+            <li><i class="lg lg--end"></i> End location</li>
+            <li><i class="lg lg--route"></i> Trip route</li>
+          </ul>
+        </div>
+
+        <div class="mapstats">
+          <div><span>Distance covered</span><b class="num">486 km</b></div>
+          <div><span>To next stop</span><b class="num">18.4 km</b></div>
+          <div><span>Hubs passed</span><b class="num">3 of 4</b></div>
+          <div><span>Position updated</span><b class="num" id="mapUpdated">just now</b></div>
+        </div>
+
+        <div class="maphubinfo" id="mapHubInfo" hidden>
+          <div>
+            <p class="eyebrow" id="mapHubInfoBadge">Stop #9</p>
+            <p class="maphubinfo__name" id="mapHubInfoName">Seymour Hub</p>
+            <p class="maphubinfo__loc" id="mapHubInfoLoc">Emily Street, Seymour VIC 3660</p>
+          </div>
+          <span class="hubstatus" id="mapHubInfoStatus">Next</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section grid-2">
+    <div class="card">
+      <div class="card__hd"><h2>BFM status</h2><span class="eyebrow" id="tripBfmSrc"></span></div>
+      <div class="card__bd">
+        <div class="bfm__hero bfm-ok" id="tripBfmHero">
+          <div class="bfm__state">
+            <b id="tripBfmState">Compliant</b>
+            <span id="tripBfmStateSub">Working within your configured BFM limits.</span>
+          </div>
+          <div class="bfm__count">
+            <b id="tripBfmCountdown">01:18</b>
+            <span>Until rest due</span>
+          </div>
+        </div>
+        <div class="bfm__rules" id="tripBfmRules"></div>
+        <div class="bfm__rest ok" id="tripBfmRest">
+          <svg width="17" height="17" style="flex:none;margin-top:1px"><use href="#i-check"/></svg>
+          <div id="tripBfmRestText">No rest owing right now.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__hd"><h2>Vehicle health</h2><span class="eyebrow">Telematics</span></div>
+      <div class="card__bd">
+        <div class="vehicle-id">
+          <span class="vehicle-id__box"><svg width="22" height="22"><use href="#i-truck"/></svg></span>
+          <div><b>VH-208</b><br><span>Scania R500 · B-Double</span></div>
+        </div>
+        <div class="hrow"><div class="hrow__top"><span class="hrow__name"><i class="status-dot green"></i> Engine</span><span class="hrow__val ok">Normal</span></div></div>
+        <div class="hrow"><div class="hrow__top"><span class="hrow__name"><i class="status-dot green"></i> Tyres</span><span class="hrow__val ok">Good</span></div></div>
+        <div class="hrow"><div class="hrow__top"><span class="hrow__name"><i class="status-dot green"></i> Fuel</span><span class="hrow__val num">82%</span></div><div class="bar"><i class="green" data-fill="82"></i></div></div>
+        <div class="hrow"><div class="hrow__top"><span class="hrow__name"><i class="status-dot green"></i> AdBlue</span><span class="hrow__val num">64%</span></div><div class="bar"><i class="green" data-fill="64"></i></div></div>
+        <div class="hrow"><div class="hrow__top"><span class="hrow__name"><i class="status-dot amber"></i> Service</span><span class="hrow__val warn">Due in 620 km</span></div><div class="bar"><i class="amber" data-fill="72"></i></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="startband" style="background:linear-gradient(140deg,#123D2A,#0B7C45)">
+    <h2>Finished the run?</h2>
+    <div class="btnrow" style="justify-content:center">
+      <button class="btn btn--primary" id="btnComplete" style="flex:0 1 240px">Complete trip</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- ========================================================================
+     VIEW 4 — HUB CHECK-IN
+     ===================================================================== -->
+<div class="view" id="viewCheckIn" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Hub check-in / check-out</p>
+    <h1>Hub Check-In / Check-Out</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Hub check-in / check-out details</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fHub">
+        <span>Hub name</span>
+        <select id="inHub" required>
+          <option value="">Select a hub…</option>
+        </select>
+      </label>
+
+      <label class="field" id="fCheckDate">
+        <span>Date</span>
+        <input type="text" id="inCheckDate" readonly>
+        <small>Set automatically to today's date.</small>
+      </label>
+
+      <label class="field" id="fCheckInTime">
+        <span>Check-in time</span>
+        <input type="time" id="inCheckInTime" step="60" required>
+      </label>
+
+      <label class="field" id="fCheckOutTime">
+        <span>Check-out time</span>
+        <input type="time" id="inCheckOutTime" step="60">
+      </label>
+
+      <p class="formerr" id="checkInErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveCheckIn">Save & continue to POD</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 5 — PROOF OF DELIVERY (POD)
+     ===================================================================== -->
+<div class="view" id="viewPod" hidden>
+  <button class="backlink" data-nav="checkin"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>Back to check-in</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Proof of delivery</p>
+    <h1 id="podHubTitle">POD</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Products for this hub</h2><span class="eyebrow" id="podHubDate"></span></div>
+    <div class="card__bd">
+      <ul class="pod-items" id="podItemList"></ul>
+    </div>
+  </div>
+
+  <div class="card formcard" style="margin-top:18px">
+    <div class="card__hd"><h2>Delivery status</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fPodStatus">
+        <span>POD status</span>
+        <select id="inPodStatus" required>
+          <option value="">Select a status…</option>
+          <option value="Delivered">Delivered</option>
+          <option value="Revised">Revised</option>
+          <option value="Partially Received">Partially received</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Notes (optional)</span>
+        <input type="text" id="podNotes" placeholder="Add any delivery notes…">
+      </label>
+
+      <p class="formerr" id="podErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="checkin">Cancel</button>
+        <button class="btn btn--primary" id="btnSavePod">Save POD report</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 6 — FUEL ENTRY
+     ===================================================================== -->
+<div class="view" id="viewFuel" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Fuel entry</p>
+    <h1>Record a refuel</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Address details</h2><span class="eyebrow">Refuel location</span></div>
+    <div class="card__bd">
+      <label class="field" id="fFuelDate">
+        <span>Date</span>
+        <input type="text" id="inFuelDate" readonly>
+        <small>Captured automatically when you submit</small>
+      </label>
+
+      <label class="field" id="fFuelTime">
+        <span>Time</span>
+        <input type="text" id="inFuelTime" readonly>
+        <small>Captured automatically when you submit</small>
+      </label>
+
+      <label class="field" id="fFuelCurrentLoc">
+        <span>Current location</span>
+        <input type="text" id="inFuelCurrentLoc" placeholder="e.g. Hume Highway, Albury NSW">
+      </label>
+
+      <label class="field">
+        <span>Live Location URL</span>
+        <input type="text" id="inFuelUrl" placeholder="https://maps.google.com/…">
+        <small>Tap "Use my location" to fill this from your device GPS.</small>
+      </label>
+
+      <div class="btnrow" style="margin-bottom:16px">
+        <button class="btn btn--ghost" data-geo="fuel">Use my location</button>
+      </div>
+
+      <label class="field" id="fFuelStation">
+        <span>Fuel station name</span>
+        <input type="text" id="inFuelStation" placeholder="e.g. Shell Coles Express Albury">
+      </label>
+
+
+
+
+    </div>
+  </div>
+
+  <div class="card formcard" style="margin-top:18px">
+    <div class="card__hd"><h2>Fuel details</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fFuelType">
+        <span>Fuel type</span>
+        <select id="inFuelType" required>
+          <option value="">Select fuel type…</option>
+          <option>Diesel</option>
+          <option>Petrol</option>
+          <option>CNG</option>
+          <option>LNG</option>
+          <option>Electric</option>
+          <option>Hybrid</option>
+        </select>
+      </label>
+
+      <label class="field" id="fFuelQty">
+        <span>Fuel quantity (L / kWh)</span>
+        <input type="number" id="inFuelQty" min="0" step="0.01" placeholder="e.g. 214.50">
+      </label>
+
+      <label class="field" id="fFuelCost">
+        <span>Cost per unit</span>
+        <input type="number" id="inFuelCost" min="0" step="0.01" placeholder="e.g. 2.09">
+      </label>
+
+      <label class="field">
+        <span>Total fuel cost</span>
+        <input type="number" id="inFuelTotal" min="0" step="0.01" readonly>
+        <small>Calculated automatically </small>
+      </label>
+
+      <label class="field" id="fFuelOdo">
+        <span>Current mileage</span>
+        <input type="number" id="inFuelOdo" min="0" step="1" placeholder="Odometer reading (km)">
+      </label>
+
+      <p class="formerr" id="fuelErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveFuel">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 7 — REPORT INCIDENT
+     ===================================================================== -->
+<div class="view" id="viewIncident" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Report incident</p>
+    <h1>Report an accident</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Incident details</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fIncName">
+        <span>Accident name</span>
+        <input type="text" id="inIncName" placeholder="Short description, e.g. Rear-end at rest stop">
+      </label>
+
+      <label class="field" id="fIncPlace">
+        <span>Accident place</span>
+        <input type="text" id="inIncPlace" placeholder="e.g. M31 Hume Motorway, northbound">
+      </label>
+
+      <label class="field" id="fIncLoc">
+        <span>Live location</span>
+        <input type="text" id="inIncLoc" placeholder="e.g. -35.1234, 147.5678 or paste a maps link">
+      </label>
+
+      <label class="field">
+        <span>Live Location URL</span>
+        <input type="text" id="inIncUrl" placeholder="https://maps.google.com/…">
+        <small>Tap "Use my location" to fill this from your device GPS.</small>
+      </label>
+
+      <div class="btnrow" style="margin-bottom:16px">
+        <button class="btn btn--ghost" data-geo="inc">Use my location</button>
+      </div>
+
+      <label class="field" id="fIncDate">
+        <span>Date</span>
+        <input type="date" id="inIncDate">
+      </label>
+
+      <label class="field" id="fIncTime">
+        <span>Time</span>
+        <input type="time" id="inIncTime" step="60">
+      </label>
+
+      <label class="field" id="fIncTrip">
+        <span>Trip status</span>
+        <select id="inIncTrip">
+          <option value="">Select trip status…</option>
+          <option>In transit</option>
+          <option>Stopped</option>
+          <option>Loading</option>
+          <option>Unloading</option>
+          <option>On break</option>
+          <option>Trip cancelled</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card formcard" style="margin-top:18px">
+    <div class="card__hd"><h2>Damage &amp; cost</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fIncDamageCost">
+        <span>Damage &amp; cost</span>
+        <input type="text" id="inIncDamageCost" placeholder="e.g. Rear bumper + tail light, est. $1,200">
+      </label>
+
+      <div class="field" id="fIncRepairs">
+        <span>Vehicle repairs</span>
+        <div class="yn-toggle" data-yn-target="inIncRepairs">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inIncRepairs">
+      </div>
+
+      <div class="field" id="fIncParts">
+        <span>Vehicle parts damaged</span>
+        <div class="yn-toggle" data-yn-target="inIncParts">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inIncParts">
+      </div>
+
+      <div class="field" id="fIncAltVeh">
+        <span>Alternative vehicle required</span>
+        <div class="yn-toggle" data-yn-target="inIncAltVeh">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inIncAltVeh">
+      </div>
+
+      <label class="field" id="fIncDur">
+        <span>Total accident duration (hours)</span>
+        <input type="number" id="inIncDur" min="0" step="0.25" placeholder="e.g. 2.5">
+      </label>
+
+      <p class="formerr" id="incErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveIncident">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 8 — VEHICLE ISSUE
+     ===================================================================== -->
+<div class="view" id="viewVehicleIssue" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Vehicle issue</p>
+    <h1>Report a vehicle issue</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Issue details</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fVehName">
+        <span>Incident name</span>
+        <input type="text" id="inVehName" placeholder="e.g. Air brake pressure warning">
+      </label>
+
+      <label class="field" id="fVehLoc">
+        <span>Live location</span>
+        <input type="text" id="inVehLoc" placeholder="Where the issue occurred">
+      </label>
+
+      <label class="field" id="fVehWhen">
+        <span>Incident date &amp; time</span>
+        <input type="datetime-local" id="inVehWhen">
+      </label>
+
+      <label class="field" id="fVehStatus">
+        <span>Status</span>
+        <select id="inVehStatus">
+          <option value="">Select status…</option>
+          <option>Reported</option>
+          <option>Under investigation</option>
+          <option>In repair</option>
+          <option>Resolved</option>
+          <option>Vehicle grounded</option>
+        </select>
+      </label>
+
+      <div class="field" id="fVehContinue">
+        <span>Continue to drive</span>
+        <div class="yn-toggle" data-yn-target="inVehContinue">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inVehContinue">
+      </div>
+
+      <div class="field" id="fVehAltVeh">
+        <span>Alternative vehicle required</span>
+        <div class="yn-toggle" data-yn-target="inVehAltVeh">
+          <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+          <button type="button" class="yn-btn" data-yn-val="no">No</button>
+        </div>
+        <input type="hidden" id="inVehAltVeh">
+      </div>
+
+      <label class="field" id="fVehDamages">
+        <span>Damages</span>
+        <input type="text" id="inVehDamages" placeholder="What is damaged or not working">
+      </label>
+
+      <label class="field">
+        <span>Live location URL</span>
+        <input type="text" id="inVehUrl" placeholder="https://maps.google.com/…">
+        <small>Tap "Use my location" to fill this from your device GPS.</small>
+      </label>
+
+      <div class="btnrow" style="margin-bottom:16px">
+        <button class="btn btn--ghost" data-geo="veh">Use my location</button>
+      </div>
+
+      <label class="field">
+        <span>Notes</span>
+        <input type="text" id="inVehNotes" placeholder="Anything the workshop should know (optional)">
+      </label>
+
+      <p class="formerr" id="vehErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveVehicle">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 9 — BREAK
+     ===================================================================== -->
+<div class="view" id="viewBreak" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Rest break</p>
+    <h1>Log a break</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Break details</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fBrkDate">
+        <span>Current date</span>
+        <input type="text" id="inBrkDate" readonly>
+      </label>
+
+      <label class="field" id="fBrkTripName">
+        <span>Trip name</span>
+        <input type="text" id="inBrkTripName" value="Sydney → Melbourne" readonly>
+      </label>
+
+      <label class="field" id="fBrkTripId">
+        <span>Trip ID</span>
+        <input type="text" id="inBrkTripId" value="TR-1048" readonly>
+      </label>
+
+      <label class="field" id="fBrkStart">
+        <span>Start time</span>
+        <input type="time" id="inBrkStart" step="60">
+      </label>
+
+      <label class="field" id="fBrkEnd">
+        <span>End time</span>
+        <input type="time" id="inBrkEnd" step="60">
+      </label>
+
+      <label class="field" id="fBrkLoc">
+        <span>Live location</span>
+        <input type="text" id="inBrkLoc" placeholder="e.g. Marulan BP Truck Stop">
+      </label>
+
+      <label class="field">
+        <span>Live Location URL</span>
+        <input type="text" id="inBrkUrl" placeholder="https://maps.google.com/…">
+        <small>Tap "Use my location" to fill this from your device GPS.</small>
+      </label>
+
+      <div class="btnrow" style="margin-bottom:16px">
+        <button class="btn btn--ghost" data-geo="brk">Use my location</button>
+      </div>
+
+      <div class="calc">
+        <div><span>Total break duration</span><b id="brkLength">—</b></div>
+        <div><span>Required block</span><b id="brkRequired">—</b></div>
+        <div><span>Status</span><b id="brkStatus">—</b></div>
+      </div>
+
+      <p class="formerr" id="brkErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="dash">Cancel</button>
+        <button class="btn btn--primary" id="btnSaveBreak">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================
+     VIEW 10 — TRIP FEEDBACK (after Complete Trip)
+     ===================================================================== -->
+<div class="view" id="viewTripFeedback" hidden>
+  <button class="backlink" data-nav="trip"><svg width="18" height="18" aria-hidden="true"><use href="#i-chev"/></svg><span>← Back</span></button>
+  <div class="pagehead">
+    <p class="eyebrow">Trip complete</p>
+    <h1>Trip feedback</h1>
+  </div>
+
+  <div class="card formcard">
+    <div class="card__hd"><h2>Feedback</h2><span class="eyebrow">Required</span></div>
+    <div class="card__bd">
+      <label class="field" id="fTfbTripId">
+        <span>Trip ID</span>
+        <input type="text" id="inTfbTripId" value="TR-1048" readonly>
+      </label>
+
+      <label class="field" id="fTfbTripName">
+        <span>Trip name</span>
+        <input type="text" id="inTfbTripName" value="Sydney → Melbourne" readonly>
+      </label>
+
+      <label class="field" id="fTfbFeedback">
+        <span>Trip feedback</span>
+        <textarea id="inTfbFeedback" rows="5" placeholder="How did the run go? Note any delays, road conditions or vehicle concerns…" style="width:100%;min-height:110px;padding:12px 14px;border-radius:10px;border:1px solid var(--line-strong);background:var(--card-2);font-family:inherit;font-size:15px;resize:vertical;"></textarea>
+      </label>
+
+      <p class="formerr" id="tfbErr" hidden></p>
+
+      <div class="btnrow">
+        <button class="btn btn--ghost" data-nav="trip">Cancel</button>
+        <button class="btn btn--primary" id="btnSubmitTripFeedback">Submit feedback</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /shell -->
+
+<!-- ======================== TYRE PRESSURE POPUP ============================ -->
+<div class="scrim" id="tyreScrim" hidden></div>
+<div class="tyrepop" id="tyrePopup" hidden role="dialog" aria-modal="true" aria-labelledby="tyrePopupTitle">
+  <div class="tyrepop__hd">
+    <h3 id="tyrePopupTitle">Front left tyre</h3>
+    <button class="xbtn" id="tyrePopupClose" aria-label="Close">✕</button>
+  </div>
+  <label class="field">
+  </label>
+  <div class="field" id="fTyrePopupOk">
+    <div class="yn-toggle" data-yn-target="tyrePopupOk">
+      <button type="button" class="yn-btn" data-yn-val="yes">Yes</button>
+      <button type="button" class="yn-btn" data-yn-val="no">No</button>
+    </div>
+    <input type="hidden" id="tyrePopupOk">
+  </div>
+  <div class="btnrow">
+    <button class="btn btn--ghost" id="tyrePopupCancel">Cancel</button>
+    <button class="btn btn--primary" id="tyrePopupSave">Save reading</button>
+  </div>
+</div>
+
+<!-- ======================== DOCUMENT VIEWER POPUP ========================== -->
+<div class="scrim" id="docViewerScrim" hidden></div>
+<div class="docviewer" id="docViewerPopup" hidden role="dialog" aria-modal="true" aria-labelledby="docViewerTitle">
+  <div class="docviewer__hd">
+    <h3 id="docViewerTitle">Document</h3>
+    <button class="xbtn" id="docViewerClose" aria-label="Close">✕</button>
+  </div>
+  <div class="docviewer__body">
+    <p class="docviewer__loading" id="docViewerLoading">Loading preview…</p>
+    <iframe id="docViewerFrame" class="docviewer__frame" title="Document preview"></iframe>
+  </div>
+  <div class="docviewer__ft">
+    <a class="btn btn--ghost" id="docViewerOpenTab" href="#" target="_blank" rel="noopener">Open in new tab</a>
+    <a class="btn btn--primary" id="docViewerDownload" href="#" download>
+      <svg width="16" height="16" aria-hidden="true"><use href="#i-download"/></svg>
+      <span>Download</span>
+    </a>
+  </div>
+</div>
+
+<!-- ======================== DRIVER INFORMATION PANEL ====================== -->
+<div class="scrim" id="scrim" hidden></div>
+
+<!-- ========================== ALERTS &amp; NOTIFICATIONS PANEL ============ -->
+<aside class="panel" id="panelAlerts" hidden aria-label="Alerts and notifications">
+  <div class="panel__hd">
+    <h2>Alerts &amp; notifications</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <ul class="alerts" id="alertList"></ul>
+  </div>
+</aside>
+
+<aside class="panel" id="panelDriver" hidden aria-label="Driver information">
+  <div class="panel__hd">
+    <h2>Driver information</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <div class="idcard">
+      <span class="avatar" id="panelAvatar"><img id="panelAvatarImg" alt="" hidden><span id="panelAvatarInitials">--</span></span>
+      <div class="idcard__text"><b id="panelDriverName">Loading…</b><span id="panelDriverSub">— · —</span></div>
+    </div>
+
+    <div class="doc-warn" id="driverLookupError" hidden style="margin-bottom:16px;background:var(--red-soft,#FBE7E5);color:#B4231B;border-color:rgba(211,53,43,.3)">
+      <svg width="17" height="17"><use href="#i-alert"/></svg> <span id="driverLookupErrorText"></span>
+    </div>
+
+    <p class="eyebrow" style="margin-bottom:8px">Personal information</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Driver ID</dt><dd id="panelEmployeeId">—</dd></div>
+      <div><dt>Name</dt><dd id="panelName">—</dd></div>
+      <div><dt>Gender</dt><dd id="panelGender">—</dd></div>
+      <div><dt>Date of birth</dt><dd class="num" id="panelDob">—</dd></div>
+      <div><dt>Mobile number</dt><dd id="panelMobile">—</dd></div>
+      <div><dt>Email</dt><dd id="panelEmail">—</dd></div>
+      <div><dt>Full Address</dt><dd id="panelAddress">—</dd></div>
+    </dl>
+
+    <p class="eyebrow" style="margin-bottom:8px">Employment</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Employment type</dt><dd id="panelEmploymentType">—</dd></div>
+      <div><dt>Joining date</dt><dd class="num" id="panelStarted">—</dd></div>
+      <div><dt>Department</dt><dd id="panelDepartment">—</dd></div>
+    </dl>
+
+    <p class="eyebrow" style="margin-bottom:8px">Licence</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Licence</dt><dd id="panelLicenceNo">—</dd></div>
+      <div><dt>Licence type</dt><dd id="panelLicenceClass">—</dd></div>
+      <div><dt>Licence issue date</dt><dd class="num" id="panelLicenceIssueDate">—</dd></div>
+      <div><dt>Licence expiry date</dt><dd class="num" id="panelLicenceExpiry">—</dd></div>
+      <div><dt>Licence status</dt><dd id="panelLicenceStatus">—</dd></div>
+      <div><dt>Fatigue module</dt><dd class="num" id="panelBfmModule">Standard BFM</dd></div>
+    </dl>
+
+    <p class="eyebrow" style="margin-bottom:8px">Driving</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Driver Experience (Years)</dt><dd id="panelExperience">—</dd></div>
+      <div><dt>Last checkup date</dt><dd class="num" id="panelLastCheckup">—</dd></div>
+    </dl>
+
+    <div class="doc-warn" id="panelDocWarn" hidden><svg width="17" height="17"><use href="#i-alert"/></svg> <span id="panelDocWarnText"></span></div>
+    <button class="btn btn--ghost" style="width:100%" data-nav="documents">View documents</button>
+  </div>
+</aside>
+
+<!-- ====================== TODAY'S TRIPS PANEL ============================ -->
+<aside class="panel" id="panelTrips" hidden aria-label="Driver's trips today">
+  <div class="panel__hd">
+    <h2>Today's trips</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <p class="eyebrow" style="margin-bottom:10px"><span id="tripsDriverName">Driver</span> · <span id="tripsDateLabel">today</span></p>
+    <div class="calc" style="margin-bottom:18px">
+      <div><span>Assigned</span><b id="tripsAssigned">4</b></div>
+      <div><span>Completed</span><b id="tripsDone">2</b></div>
+      <div><span>Remaining</span><b id="tripsLeft">2</b></div>
+    </div>
+    <ul class="triplist" id="tripList"></ul>
+  </div>
+</aside>
+
+<!-- ====================== TRIP ATTENDANCE PANEL ========================== -->
+<aside class="panel" id="panelAttendance" hidden aria-label="Trip attendance">
+  <div class="panel__hd">
+    <h2>Trip attendance</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <div class="attsum">
+      <div class="attsum__ring">
+        <svg width="128" height="128">
+          <circle class="ring__c" cx="64" cy="64" r="54"/>
+          <circle class="ring__v" id="attRing" cx="64" cy="64" r="54"
+                  stroke="var(--green)" stroke-dasharray="339" stroke-dashoffset="339"/>
+        </svg>
+        <div class="ring__lbl"><b id="attPct">0%</b><span>Attended</span></div>
+      </div>
+      <div class="attsum__nums">
+        <div><span>Attended / completed</span><b id="attDone2">—</b></div>
+        <div><span>Cancelled</span><b id="attCancel2">—</b></div>
+        <div><span>Total assigned</span><b id="attTotal2">—</b></div>
+      </div>
+    </div>
+
+    <p class="eyebrow" style="margin:22px 0 8px">Other trips</p>
+    <ul class="triplist" id="attList"></ul>
+  </div>
+</aside>
+
+<!-- ========================== DRIVER SCORE PANEL ========================== -->
+<aside class="panel" id="panelScore" hidden aria-label="Driver score">
+  <div class="panel__hd">
+    <h2>Driver score</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <div class="scorehero">
+      <div class="ring">
+        <svg width="118" height="118">
+          <circle class="ring__c" cx="59" cy="59" r="50"/>
+          <circle class="ring__v" id="scoreRing" cx="59" cy="59" r="50" stroke="#0F9D58" stroke-dasharray="314" stroke-dashoffset="314"/>
+        </svg>
+        <div class="ring__lbl"><b id="scoreBig">92</b><span>out of 100</span></div>
+      </div>
+      <h3>Excellent — top 8% of the fleet</h3>
+      <p>Rolling 30 days · updated after every completed trip</p>
+    </div>
+
+    <div class="scorebars">
+      <div><span>Safety <b>96</b></span><div class="bar"><i class="green" data-fill="96"></i></div></div>
+      <div><span>On-time delivery <b>100</b></span><div class="bar"><i class="green" data-fill="100"></i></div></div>
+      <div><span>Fatigue compliance <b>94</b></span><div class="bar"><i class="green" data-fill="94"></i></div></div>
+      <div><span>Fuel efficiency <b>81</b></span><div class="bar"><i class="amber" data-fill="81"></i></div></div>
+      <div><span>Vehicle care <b>88</b></span><div class="bar"><i class="green" data-fill="88"></i></div></div>
+    </div>
+
+    <p class="eyebrow" style="margin:22px 0 8px">Last 30 days</p>
+    <dl class="deflist">
+      <div><dt>Trips completed</dt><dd class="num">38</dd></div>
+      <div><dt>Distance driven</dt><dd class="num">21,480 km</dd></div>
+      <div><dt>PODs captured</dt><dd>248 of 248</dd></div>
+      <div><dt>Harsh braking</dt><dd class="num">2 events</dd></div>
+      <div><dt>Speeding events</dt><dd class="num">0</dd></div>
+      <div><dt>BFM breaches</dt><dd class="num">0</dd></div>
+      <div><dt>Incidents reported</dt><dd class="num">0</dd></div>
+    </dl>
+
+    <div class="doc-warn" style="background:var(--blue-soft);color:#10457F;border-color:rgba(30,111,232,.2)">
+      <svg width="17" height="17"><use href="#i-shield"/></svg>
+    </div>
+    <button class="btn btn--ghost" style="width:100%" data-action="score-report">View full score report</button>
+  </div>
+</aside>
+
+<!-- ========================== TRIP DETAILS POPUP ========================== -->
+<aside class="panel" id="panelTripDetails" hidden aria-label="Trip details">
+  <div class="panel__hd">
+    <h2>Trip details</h2>
+    <button class="xbtn" data-close aria-label="Close">✕</button>
+  </div>
+  <div class="panel__bd">
+    <div class="idcard" style="margin-bottom:18px">
+      <div class="idcard__text">
+        <b id="tdTripId">—</b>
+        <span id="tdTripStatus" class="hubstatus">—</span>
+      </div>
+    </div>
+
+    <p class="eyebrow" style="margin-bottom:8px">Trip details</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Trip ID</dt><dd id="tdTripIdRow">—</dd></div>
+      <div><dt>Trip Type</dt><dd id="tdTripType">—</dd></div>
+      <div><dt>Trip Status</dt><dd id="tdTripStatusRow">—</dd></div>
+      <div><dt>Route</dt><dd id="tdRoute">—</dd></div>
+      <div><dt>Booking Date</dt><dd class="num" id="tdBookingDate">—</dd></div>
+      <div><dt>Planned Delivery Date</dt><dd class="num" id="tdPlannedDelivery">—</dd></div>
+    </dl>
+
+    <p class="eyebrow" style="margin-bottom:8px">Assignment</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>Vehicle</dt><dd id="tdVehicle">—</dd></div>
+      <div><dt>Vehicle Capacity</dt><dd class="num" id="tdVehicleCapacity">—</dd></div>
+      <div><dt>Supervisor</dt><dd id="tdSupervisor">—</dd></div>
+      <div><dt>Primary Driver</dt><dd id="tdPrimaryDriver">—</dd></div>
+      <div><dt>Vehicle Inspection Status</dt><dd id="tdVehicleInspectionStatus">—</dd></div>
+    </dl>
+
+    <p class="eyebrow" style="margin-bottom:8px">Locations &amp; delivery</p>
+    <dl class="deflist" style="margin-bottom:18px">
+      <div><dt>From Location</dt><dd id="tdFromLocation">—</dd></div>
+      <div><dt>To Location</dt><dd id="tdToLocation">—</dd></div>
+      <div><dt>Pickup Location</dt><dd id="tdPickupLocation">—</dd></div>
+      <div><dt>Delivery Location</dt><dd id="tdDeliveryLocation">—</dd></div>
+      <div><dt>Estimated Distance (KM)</dt><dd class="num" id="tdEstimatedDistance">—</dd></div>
+      <div><dt>Trip Duration</dt><dd class="num" id="tdTripDuration">—</dd></div>
+      <div><dt>Quantity</dt><dd class="num" id="tdQuantity">—</dd></div>
+      <div><dt>Weight</dt><dd class="num" id="tdWeight">—</dd></div>
+      <div><dt>Expected Delivery</dt><dd class="num" id="tdExpectedDelivery">—</dd></div>
+    </dl>
+  </div>
+</aside>
+
+<!-- Three.js is now loaded on demand by Script.js itself, with automatic
+     fallback across three CDNs (cdnjs → jsdelivr → unpkg) — see loadThreeLib()
+     — so a single blocked/offline host can no longer strand the 3D truck on
+     the flat fallback grid. -->
+<script src="Script.js"></script>
+</body>
+</html>

@@ -1,0 +1,2006 @@
+/* ==========================================================================
+   SKYWAY LOGISTICS — DRIVER COMMAND CENTER
+   Zoho Creator widget stylesheet.
+   Spacing system: 8 / 12 / 16 / 24 / 32
+   ========================================================================== */
+
+:root {
+  --navy: #0F2748;
+  --navy-2: #1B3A64;
+  --blue: #1E6FE8;
+  --blue-soft: #E8F0FE;
+  --green: #0F9D58;
+  --green-soft: #E6F5EC;
+  --amber: #C77700;
+  --amber-soft: #FFF4E0;
+  --red: #D3352B;
+  --red-soft: #FDECEA;
+
+  --bg: #F4F6FA;
+  --card: #FFFFFF;
+  --card-2: #FAFBFD;
+  --line: #E3E8F0;
+  --line-strong: #CFD8E6;
+  --text: #14213D;
+  --muted: #64748B;
+  --faint: #94A3B8;
+
+  /* KPI tile palette — matches the supplied reference */
+  --kpi-bg: #FAF2E8;
+  --kpi-bg-hi: #FDF7F0;
+  --kpi-label: #A08F7C;
+  --k-blue: #1F6FD0;
+  --k-violet: #6D2AE0;
+  --k-teal: #0E7C8A;
+  --k-green: #0E8A55;
+  --k-rust: #B35418;
+  --k-red: #C43D2E;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --sh-1: 0 1px 2px rgba(15, 39, 72, .06), 0 1px 3px rgba(15, 39, 72, .04);
+  --sh-2: 0 4px 12px rgba(15, 39, 72, .08), 0 1px 3px rgba(15, 39, 72, .05);
+  --sh-3: 0 10px 28px rgba(15, 39, 72, .12);
+  /* Isuzu's own truck-badge typeface is proprietary and not distributable —
+     Barlow (body copy) + Oswald (headings/numerics, loaded in widget.html)
+     are the closest openly-licensed match to the bold, condensed, industrial
+     signage look used across the Isuzu F-Series, applied dashboard-wide. */
+  --font: "Barlow", "Oswald", "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-head: "Oswald", "Barlow", "Segoe UI", Arial, Helvetica, sans-serif;
+  --mono: "Oswald", "Barlow", "Segoe UI", Arial, Helvetica, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+/* Headings dashboard-wide use the bolder, condensed heading face for that
+   Isuzu-style industrial look; body copy stays on --font for readability. */
+h1, h2, h3, h4, .kpi__val, .hdr__title {
+  font-family: var(--font-head);
+  letter-spacing: -.01em;
+}
+ul { list-style: none; }
+
+/* ============================== PAGE LOADER ============================= */
+.page-loader {
+  position: fixed; inset: 0; z-index: 999; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  background: linear-gradient(160deg, var(--navy), var(--navy-2));
+  opacity: 1; transition: opacity .42s ease, visibility .42s ease;
+}
+.page-loader.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.page-loader__scene { position: relative; width: 220px; height: 90px; display: flex; align-items: flex-end; justify-content: center; }
+.page-loader__truck { width: 130px; height: auto; animation: loaderBounce .6s ease-in-out infinite; }
+.page-loader__wheel { transform-box: fill-box; transform-origin: center; animation: loaderWheelSpin .5s linear infinite; }
+.page-loader__road { position: absolute; bottom: 4px; left: 0; right: 0; height: 3px; overflow: hidden; }
+.page-loader__road span {
+  position: absolute; top: 0; width: 22px; height: 3px; border-radius: 2px;
+  background: rgba(255, 255, 255, .35); animation: loaderRoadMove .7s linear infinite;
+}
+.page-loader__road span:nth-child(1) { left: 0; animation-delay: 0s; }
+.page-loader__road span:nth-child(2) { left: 62px; animation-delay: .15s; }
+.page-loader__road span:nth-child(3) { left: 124px; animation-delay: .3s; }
+.page-loader__road span:nth-child(4) { left: 186px; animation-delay: .45s; }
+@keyframes loaderBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes loaderWheelSpin { to { transform: rotate(360deg); } }
+@keyframes loaderRoadMove { from { transform: translateX(0); } to { transform: translateX(-248px); } }
+.page-loader__txt {
+  color: rgba(255, 255, 255, .78); font-size: 13.5px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.page-loader__progress {
+  width: 220px; height: 6px; border-radius: 99px;
+  background: rgba(255, 255, 255, .16); overflow: hidden;
+}
+.page-loader__progress-fill {
+  height: 100%; width: 0%; border-radius: 99px;
+  background: linear-gradient(90deg, #4C8DFF, #14B36B);
+  transition: width .35s cubic-bezier(.2, .8, .3, 1);
+}
+.page-loader__pct {
+  color: rgba(255, 255, 255, .55); font-family: var(--mono); font-size: 11.5px;
+  font-variant-numeric: tabular-nums; letter-spacing: .04em; margin-top: -6px;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .10em; text-transform: uppercase; color: var(--faint); }
+[hidden] { display: none !important; }
+
+/* ---------------------------------- shell -------------------------------- */
+.shell { max-width: 1600px; margin: 0 auto; padding: 0 24px 32px; }
+.view { animation: fade .28s ease both; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------------------------------- header ------------------------------- */
+.hdr {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, .85);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.hdr__brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mark {
+  width: 38px; height: 38px; flex: none; border-radius: 10px;
+  background: linear-gradient(145deg, var(--blue), var(--navy));
+  display: grid; place-items: center; color: #fff;
+  box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+.mark svg { width: 20px; height: 20px; }
+.hdr__title { font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; }
+.hdr__sub { font-size: 11px; font-weight: 600; letter-spacing: .10em; text-transform: uppercase; color: var(--blue); }
+.hdr__meta { display: flex; align-items: center; gap: 20px; }
+.hdr__meta dl { display: flex; gap: 20px; }
+.hdr__meta dt { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.hdr__meta dd { font-size: 13px; font-weight: 600; }
+.hdr__tools { display: flex; align-items: center; gap: 10px; }
+
+.bell {
+  position: relative; width: 40px; height: 40px; border: 1px solid var(--line);
+  background: var(--card); border-radius: 10px; display: grid; place-items: center;
+  box-shadow: var(--sh-1); transition: box-shadow .18s, transform .18s, border-color .18s;
+}
+.bell:hover { box-shadow: var(--sh-2); transform: translateY(-1px); border-color: var(--line-strong); }
+.bell__dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); border: 2px solid #fff; }
+.bell__count {
+  position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--red); color: #fff; border: 2px solid #fff;
+  font-size: 10px; font-weight: 800; line-height: 13px; text-align: center;
+  font-family: var(--mono);
+}
+
+/* avatar buttons */
+.avbtn {
+  display: flex; align-items: center; gap: 9px; padding: 4px 10px 4px 4px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: var(--sh-1); transition: transform .16s, box-shadow .16s, border-color .16s;
+}
+.avbtn:hover { transform: translateY(-1px); box-shadow: var(--sh-2); border-color: var(--line-strong); }
+.avbtn:active { transform: translateY(0) scale(.98); }
+.avbtn.is-open { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(30, 111, 232, .14); }
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: linear-gradient(145deg, #2E5C9A, var(--navy)); color: #fff;
+  font-weight: 700; font-size: 12.5px; overflow: hidden; position: relative;
+}
+.avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center; display: block; grid-area: 1 / 1; }
+.avatar span { grid-area: 1 / 1; }
+.doclist { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.doclink { color: var(--blue, #1E6FE8); text-decoration: none; font-weight: 600; }
+.doclink:hover { text-decoration: underline; }
+.doclink--static { color: var(--faint); font-weight: 500; cursor: default; }
+.avatar--score { background: none; position: relative; }
+.avatar--score svg { transform: rotate(-90deg); }
+.avatar--score b { position: absolute; inset: 0; display: grid; place-content: center; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--green); }
+.avbtn__txt { text-align: left; line-height: 1.15; }
+.avbtn__txt b { display: block; font-size: 12.5px; font-weight: 600; }
+.avbtn__txt span { font-size: 10.5px; color: var(--faint); }
+
+.duty-pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px;
+  background: var(--green-soft); color: #0B6E3E;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  border: 1px solid rgba(15, 157, 88, .22);
+}
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(15, 157, 88, .55); animation: pulse 2.4s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(15, 157, 88, 0); } 100% { box-shadow: 0 0 0 0 rgba(15, 157, 88, 0); } }
+
+/* --------------------------- slide-over panels --------------------------- */
+.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(15, 39, 72, .34); backdrop-filter: blur(2px); animation: fade .2s ease both; }
+.panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; width: 400px; max-width: 92vw;
+  background: var(--card); border-left: 1px solid var(--line); box-shadow: -18px 0 44px rgba(15, 39, 72, .18);
+  overflow-y: auto; animation: slidein .26s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes slidein { from { transform: translateX(28px); opacity: 0; } }
+.panel__hd { position: sticky; top: 0; background: var(--card); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; border-bottom: 1px solid var(--line); }
+.panel__hd h2 { font-size: 16px; font-weight: 700; }
+.panel__bd { padding: 18px; }
+.xbtn { width: 34px; height: 34px; border: 1px solid var(--line); background: var(--card-2); border-radius: 9px; font-size: 16px; line-height: 1; color: var(--muted); }
+.xbtn:hover { background: var(--red-soft); color: var(--red); border-color: rgba(211, 53, 43, .3); }
+
+.idcard { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: var(--r-md); background: linear-gradient(140deg, var(--navy), var(--navy-2)); color: #fff; margin-bottom: 16px; }
+.idcard .avatar {
+  width: 56px; height: 56px; font-size: 17px; background: rgba(255, 255, 255, .16); flex: none;
+  border: 2px solid rgba(255, 255, 255, .35); box-shadow: 0 4px 10px rgba(0, 0, 0, .18);
+}
+.idcard__text { min-width: 0; flex: 1; }
+.idcard b { display: block; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idcard span { display: block; font-size: 12.5px; color: rgba(255, 255, 255, .68); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.scorehero { text-align: center; padding: 6px 0 18px; }
+.scorehero .ring { margin: 0 auto 12px; }
+.scorehero h3 { font-size: 15px; font-weight: 700; }
+.scorehero p { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.scorebars { display: flex; flex-direction: column; gap: 13px; }
+.scorebars > div span { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 6px; }
+.scorebars b { font-family: var(--mono); }
+
+/* --------------------------------- KPI tiles -----------------------------
+   Interactive 3D tiles. Each variant sets --k-accent once; the value colour,
+   glow, top rule and sheen all derive from it, so a new variant only needs
+   that one line. Depth is built from a stacked ambient/contact/accent shadow
+   rather than a single blur, which is what reads as physical rather than flat.
+   ------------------------------------------------------------------------ */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px;
+  perspective: 1200px;          /* shared vanishing point so tilts agree */
+  align-items: stretch;         /* every tile matches its row's height */
+}
+.kpi {
+  --k-accent: var(--k-blue);
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; flex-direction: column; align-items: stretch; text-align: left;
+  min-height: 168px; padding: 20px 22px 22px;
+  background:
+    linear-gradient(158deg, #FFFDFA 0%, var(--kpi-bg) 48%, #F3E7D8 100%);
+  border: 1px solid rgba(160, 143, 124, .2);
+  border-radius: var(--r-lg);
+  transform-style: preserve-3d;
+  will-change: transform;
+  box-shadow:
+    0 1px 2px rgba(90, 68, 44, .07),
+    0 6px 14px -8px rgba(90, 68, 44, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+  transition:
+    transform .32s cubic-bezier(.2, .8, .25, 1),
+    box-shadow .32s cubic-bezier(.2, .8, .25, 1),
+    border-color .32s ease;
+}
+
+/* Accent rule along the top edge — grows in from the left on interaction. */
+.kpi::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--k-accent), color-mix(in srgb, var(--k-accent) 35%, transparent));
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .38s cubic-bezier(.2, .8, .25, 1);
+  z-index: 2;
+}
+
+/* Diagonal sheen that sweeps across on hover — the "lift into light" cue. */
+.kpi::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .58) 48%, transparent 66%);
+  transform: translateX(-120%);
+  transition: transform .7s cubic-bezier(.3, .7, .3, 1);
+}
+.kpi > * { position: relative; z-index: 2; }
+
+/* Hover / focus / touch all share one lit state. */
+.kpi:hover,
+.kpi:focus-visible,
+.kpi.is-lit {
+  transform: translateY(-6px) rotateX(4deg) scale(1.018);
+  border-color: color-mix(in srgb, var(--k-accent) 42%, transparent);
+  box-shadow:
+    0 2px 4px rgba(90, 68, 44, .08),
+    0 18px 34px -12px rgba(90, 68, 44, .3),
+    0 0 0 1px color-mix(in srgb, var(--k-accent) 22%, transparent),
+    0 0 28px -4px color-mix(in srgb, var(--k-accent) 42%, transparent),  /* glow */
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+.kpi:hover::before,
+.kpi:focus-visible::before,
+.kpi.is-lit::before { transform: scaleX(1); }
+.kpi:hover::after,
+.kpi.is-lit::after { transform: translateX(120%); }
+
+.kpi:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 3px; }
+
+/* Press: settle back toward the surface, glow tightens. */
+.kpi:active {
+  transform: translateY(-2px) rotateX(2deg) scale(.988);
+  transition-duration: .1s;
+  box-shadow:
+    0 1px 3px rgba(90, 68, 44, .12),
+    0 6px 14px -8px rgba(90, 68, 44, .26),
+    0 0 20px -6px color-mix(in srgb, var(--k-accent) 52%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+.kpi__label {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--kpi-label);
+  transition: color .28s ease;
+  /* reserve two lines so values sit on a common baseline across the row */
+  min-height: 2.4em; display: flex; align-items: flex-start;
+}
+.kpi:hover .kpi__label,
+.kpi.is-lit .kpi__label { color: color-mix(in srgb, var(--k-accent) 68%, var(--kpi-label)); }
+
+.kpi__val {
+  font-family: var(--mono); font-size: 36px; font-weight: 500; line-height: 1.05;
+  letter-spacing: .01em; margin-top: 12px; color: var(--k-accent);
+  transition: transform .32s cubic-bezier(.2, .8, .25, 1);
+  transform-origin: left center;
+}
+.kpi:hover .kpi__val,
+.kpi.is-lit .kpi__val { transform: scale(1.05) translateZ(22px); }
+.kpi__val small { font-size: 19px; opacity: .55; }
+
+.kpi__sub { font-size: 13px; color: #8A7B6B; margin-top: 8px; min-height: 2.6em; }
+
+/* Consistent section-to-section rhythm on the dashboard home: one shared
+   20px gap between the quick-actions row, the KPI grid, and the activity
+   card beneath it — replacing the mismatched 0px / 24px gaps that made the
+   page feel unevenly spaced. */
+.qa--compact + .kpis--metrics { margin-top: 20px; }
+.kpis--metrics + .section { margin-top: 20px; }
+
+/* Pushes the progress bar to the bottom so bars line up across the row. */
+.kpi__bar { margin-top: auto; padding-top: 16px; }
+.kpi__bar .bar { background: rgba(160, 143, 124, .2); }
+.kpi__bar .bar i { box-shadow: 0 0 10px -2px currentColor; }
+
+/* One line per variant drives value colour, rule, glow and label tint. */
+.kpi--violet { --k-accent: var(--k-violet); }
+.kpi--teal { --k-accent: var(--k-teal); }
+.kpi--green { --k-accent: var(--k-green); }
+.kpi--rust { --k-accent: var(--k-rust); }
+.kpi--red { --k-accent: var(--k-red); }
+
+/* Staggered entrance so the row assembles rather than snapping in. */
+@keyframes kpiRise {
+  from { opacity: 0; transform: translateY(14px) rotateX(7deg); }
+  to { opacity: 1; transform: none; }
+}
+.kpi { animation: kpiRise .5s cubic-bezier(.2, .8, .25, 1) backwards; }
+.kpi:nth-child(1) { animation-delay: .04s; }
+.kpi:nth-child(2) { animation-delay: .09s; }
+.kpi:nth-child(3) { animation-delay: .14s; }
+.kpi:nth-child(4) { animation-delay: .19s; }
+.kpi:nth-child(5) { animation-delay: .24s; }
+.kpi:nth-child(6) { animation-delay: .29s; }
+.kpi:nth-child(7) { animation-delay: .34s; }
+.kpi:nth-child(8) { animation-delay: .39s; }
+
+/* Coarse pointers get no hover tilt — .is-lit (set on touch) carries it. */
+@media (hover: none) {
+  .kpi:hover { transform: none; }
+  .kpi:hover::after { transform: translateX(-120%); }
+}
+
+/* -------------------- START TRIP (KPI-tile hero, top centre) -------------
+   Same tile language as the KPI cards — shared 3D lift, sheen and glow — but
+   inverted to a dark green field so it reads as the primary action rather
+   than another metric. --k-accent drives the glow, exactly as in .kpi.
+   ------------------------------------------------------------------------ */
+.starttop { display: flex; justify-content: center; padding: 22px 0 0; perspective: 1200px; }
+
+.kpi--start {
+  --k-accent: #2FD07A;
+  width: 100%; max-width: 520px;
+  flex-direction: row; align-items: center; gap: 18px;
+  min-height: 0; padding: 20px 24px;
+  background: linear-gradient(150deg, #0F3D2A 0%, #12673F 52%, #0B7C45 100%);
+  border-color: rgba(47, 208, 122, .34);
+  box-shadow:
+    0 1px 2px rgba(6, 40, 26, .3),
+    0 10px 24px -12px rgba(11, 124, 69, .6),
+    inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+.kpi--start__glyph {
+  flex: none; width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .12); color: #EAFBF921;
+  color: #DFFBEC; border: 1px solid rgba(255, 255, 255, .18);
+  transition: transform .32s cubic-bezier(.2,.8,.25,1), background .32s ease;
+}
+.kpi--start__text { display: flex; flex-direction: column; align-items: flex-start; text-align: left; flex: 1; }
+.kpi--start .kpi__label { color: rgba(223, 251, 236, .68); min-height: 0; }
+.kpi--start .kpi__val {
+  color: #FFFFFF; font-size: 30px; letter-spacing: .1em; margin-top: 4px; font-weight: 700;
+}
+.kpi--start .kpi__sub { color: rgba(223, 251, 236, .6); margin-top: 5px; min-height: 0; }
+.kpi--start__go {
+  flex: none; font-size: 24px; color: rgba(223, 251, 236, .55); line-height: 1;
+  transition: transform .32s cubic-bezier(.2,.8,.25,1), color .32s ease;
+}
+.kpi--start::after {
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .3) 48%, transparent 66%);
+}
+.kpi--start:hover,
+.kpi--start:focus-visible,
+.kpi--start.is-lit {
+  border-color: rgba(47, 208, 122, .6);
+  box-shadow:
+    0 2px 5px rgba(6, 40, 26, .34),
+    0 22px 40px -14px rgba(11, 124, 69, .78),
+    0 0 0 1px rgba(47, 208, 122, .3),
+    0 0 36px -4px rgba(47, 208, 122, .62),
+    inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+.kpi--start:hover .kpi--start__glyph,
+.kpi--start.is-lit .kpi--start__glyph { transform: scale(1.06) rotate(-3deg); background: rgba(255, 255, 255, .2); }
+.kpi--start:hover .kpi--start__go,
+.kpi--start.is-lit .kpi--start__go { transform: translateX(5px); color: #FFF; }
+.kpi--start:hover .kpi__val,
+.kpi--start.is-lit .kpi__val { transform: none; }   /* the arrow carries the motion */
+
+/* Slow ambient breathing glow so the primary action stays findable. */
+@keyframes startPulse {
+  0%, 100% { box-shadow: 0 1px 2px rgba(6,40,26,.3), 0 10px 24px -12px rgba(11,124,69,.6), 0 0 0 0 rgba(47,208,122,.34), inset 0 1px 0 rgba(255,255,255,.16); }
+  50%      { box-shadow: 0 1px 2px rgba(6,40,26,.3), 0 10px 24px -12px rgba(11,124,69,.6), 0 0 0 9px rgba(47,208,122,0), inset 0 1px 0 rgba(255,255,255,.16); }
+}
+.kpi--start { animation: kpiRise .5s cubic-bezier(.2,.8,.25,1) backwards, startPulse 3.4s ease-in-out 1s infinite; }
+.kpi--start:hover, .kpi--start.is-lit { animation-play-state: running, paused; }
+
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.status-dot.green { background: var(--green); }
+.status-dot.amber { background: var(--amber); }
+.status-dot.red { background: var(--red); }
+.status-dot.blue { background: var(--blue); }
+
+.bar { height: 6px; border-radius: 99px; background: #EDF1F7; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 99px; background: var(--blue); width: 0; transition: width 1.1s cubic-bezier(.2,.8,.3,1); }
+.bar > i.green { background: linear-gradient(90deg, #12B36A, var(--green)); }
+.bar > i.amber { background: linear-gradient(90deg, #F0A93B, var(--amber)); }
+.bar > i.red { background: linear-gradient(90deg, #E4645A, var(--red)); }
+
+/* ---------------------------------- cards -------------------------------- */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden; }
+.card__hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.card__hd h2 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.card__bd { padding: 18px; }
+
+.section { margin-top: 24px; }
+.grid-main { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+
+/* --------------------------------- welcome ------------------------------- */
+.welcome { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 28px 0 20px; }
+.welcome h1 { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 6px 0 10px; }
+.welcome__trip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); }
+.chip-live { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; background: var(--green-soft); color: #0B6E3E; font-weight: 700; font-size: 12px; border: 1px solid rgba(15, 157, 88, .22); }
+.route-line { display: flex; align-items: center; gap: 10px; font-weight: 600; color: var(--text); }
+.route-line .dot-o { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--blue); }
+.route-line .dot-f { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+.route-line .dash { width: 34px; height: 2px; background: repeating-linear-gradient(90deg, var(--line-strong) 0 5px, transparent 5px 9px); }
+.welcome__eta { text-align: right; }
+.welcome__eta .num { font-size: 26px; font-weight: 600; }
+
+/* ----------------------------------- BFM --------------------------------- */
+.bfm__hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.bfm__state { flex: 1 1 200px; }
+.bfm__state b { display: block; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.bfm__state span { font-size: 13px; color: var(--muted); }
+.bfm__count { text-align: right; }
+.bfm__count b { font-family: var(--mono); font-size: 30px; font-weight: 600; }
+.bfm__count span { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.bfm-ok b { color: var(--green); } .bfm-warn b { color: var(--amber); } .bfm-breach b { color: var(--red); }
+.bfm__rules { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.bfm__rule span { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; margin-bottom: 6px; }
+.bfm__rule b { font-family: var(--mono); color: var(--muted); }
+.bfm__rule em { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+.bfm__rest { margin-top: 16px; padding: 13px 15px; border-radius: 10px; font-size: 13px; display: flex; gap: 11px; align-items: flex-start; }
+.bfm__rest.ok { background: var(--green-soft); color: #0B6E3E; border: 1px solid rgba(15, 157, 88, .2); }
+.bfm__rest.warn { background: var(--amber-soft); color: #8A5300; border: 1px solid rgba(199, 119, 0, .2); }
+.bfm__rest.breach { background: var(--red-soft); color: #93261D; border: 1px solid rgba(211, 53, 43, .22); }
+.bfm__src { font-size: 11.5px; color: var(--faint); margin-top: 12px; }
+
+/* toast alert for required rest */
+.rest-alert {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 70;
+  display: flex; gap: 13px; align-items: flex-start; max-width: 460px; width: calc(100% - 28px);
+  padding: 15px 17px; border-radius: 14px; background: #fff;
+  border: 1px solid rgba(211, 53, 43, .28); border-left: 4px solid var(--red);
+  box-shadow: 0 14px 40px rgba(15, 39, 72, .22); animation: rise .3s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 14px); } }
+.rest-alert b { display: block; font-size: 14px; }
+.rest-alert p { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.rest-alert .xbtn { flex: none; }
+.rest-alert--escalated {
+  border-color: rgba(211, 53, 43, .5); border-left-width: 6px;
+  box-shadow: 0 14px 40px rgba(211, 53, 43, .3), 0 0 0 3px rgba(211, 53, 43, .1);
+  animation: rise .3s cubic-bezier(.2,.8,.3,1) both, escalatedPulse 1.6s ease-in-out 2;
+}
+@keyframes escalatedPulse {
+  0%, 100% { box-shadow: 0 14px 40px rgba(211, 53, 43, .3), 0 0 0 3px rgba(211, 53, 43, .1); }
+  50% { box-shadow: 0 14px 40px rgba(211, 53, 43, .45), 0 0 0 7px rgba(211, 53, 43, .18); }
+}
+
+/* ------------------------------ shared bits ------------------------------ */
+.deflist { display: flex; flex-direction: column; }
+.deflist > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px dashed var(--line); }
+.deflist > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.deflist dt { font-size: 12px; color: var(--muted); }
+.deflist dd { font-size: 13.5px; font-weight: 600; text-align: right; }
+
+.trip-hero { border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 6px; background: linear-gradient(140deg, var(--navy), var(--navy-2)); color: #fff; }
+.trip-hero .eyebrow { color: rgba(255, 255, 255, .62); }
+.trip-hero .num { font-size: 24px; font-weight: 600; }
+.trip-hero__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.trip-hero__pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; background: rgba(255, 255, 255, .14); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  flex: 1 1 120px; min-height: 46px; padding: 12px 18px; border-radius: 10px;
+  border: 1px solid var(--line-strong); background: var(--card); font-size: 13.5px; font-weight: 600;
+  box-shadow: var(--sh-1); transition: transform .15s, box-shadow .15s, background .15s, border-color .15s, color .15s;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: var(--sh-2); border-color: var(--blue); color: var(--blue); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn--primary { background: linear-gradient(140deg, var(--blue), #1354BE); color: #fff; border-color: transparent; box-shadow: 0 4px 12px rgba(30, 111, 232, .28), inset 0 1px 0 rgba(255, 255, 255, .22); }
+.btn--primary:hover { color: #fff; box-shadow: 0 8px 20px rgba(30, 111, 232, .34); }
+.btn--go {
+  background: linear-gradient(140deg, #14B36B, #0B7C45); color: #fff; border-color: transparent;
+  box-shadow: 0 4px 12px rgba(15, 157, 88, .3), inset 0 1px 0 rgba(255, 255, 255, .2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+}
+.btn--go:hover { color: #fff; box-shadow: 0 8px 22px rgba(15, 157, 88, .36); }
+.btn--ghost { background: var(--card-2); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* START TRIP band */
+.startband {
+  margin-top: 28px; padding: 26px; border-radius: var(--r-lg); text-align: center;
+  background: linear-gradient(140deg, #0F2748, #1B3A64); color: #fff; box-shadow: var(--sh-3);
+}
+.startband h2 { font-size: 19px; font-weight: 700; }
+.startband p { font-size: 13px; color: rgba(255, 255, 255, .7); margin: 6px 0 18px; }
+.startband .btn { flex: 0 1 300px; min-height: 54px; font-size: 15px; letter-spacing: .04em; }
+
+/* ------------------------------ trip start form -------------------------- */
+/* Back navigation — green pill per the supplied reference. */
+.backlink {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 20px 0 6px;
+  padding: 13px 30px 13px 22px;
+  border: 0; border-radius: 999px;
+  background: linear-gradient(150deg, #35DFA0 0%, #22D194 55%, #14C58A 100%);
+  color: #FFF; font-size: 16px; font-weight: 600; letter-spacing: .01em;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(8, 84, 60, .18),
+    0 8px 20px -10px rgba(20, 197, 138, .7),
+    inset 0 1px 0 rgba(255, 255, 255, .28);
+  transition: transform .26s cubic-bezier(.2,.8,.25,1), box-shadow .26s ease, filter .26s ease;
+}
+.backlink svg { flex: none; transition: transform .26s cubic-bezier(.2,.8,.25,1); }
+.backlink:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.06);
+  box-shadow:
+    0 2px 4px rgba(8, 84, 60, .2),
+    0 14px 28px -10px rgba(20, 197, 138, .82),
+    0 0 24px -6px rgba(47, 208, 122, .6),
+    inset 0 1px 0 rgba(255, 255, 255, .32);
+}
+.backlink:hover svg { transform: translateX(-3px); }
+.backlink:active { transform: translateY(0) scale(.985); transition-duration: .1s; }
+.backlink:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 760px) { .backlink { width: 100%; } }
+.pagehead { padding: 4px 0 20px; }
+.pagehead h1 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px; }
+.pagehead p { font-size: 13.5px; color: var(--muted); margin-top: 6px; max-width: 62ch; }
+.pagehead--flex { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.pagehead--flex > div:first-child { flex: 1 1 240px; min-width: 0; }
+.triptimer {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 10px 22px; border-radius: 14px; background: linear-gradient(140deg, var(--navy), var(--navy-2));
+  color: #fff; box-shadow: var(--sh-1); min-width: 128px;
+}
+.triptimer__label { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+.triptimer__val { font-size: 20px; font-weight: 700; letter-spacing: .04em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.btn--break {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 18px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: var(--amber-soft); color: #8A5300; border: 1px solid rgba(199,119,0,.25);
+  box-shadow: var(--sh-1); transition: transform .16s, box-shadow .16s, background .16s;
+  white-space: nowrap;
+}
+.btn--break:hover { background: var(--amber); color: #fff; transform: translateY(-2px); box-shadow: var(--sh-2); }
+.btn--break:active { transform: translateY(0); }
+@media (max-width: 700px) {
+  .pagehead--flex { flex-direction: column; align-items: stretch; }
+  .triptimer { width: 100%; }
+  .btn--break { align-self: stretch; justify-content: center; }
+}
+.formcard { max-width: 620px; }
+.field { display: block; margin-bottom: 16px; }
+.field > span { display: block; font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.field input, .field select {
+  width: 100%; min-height: 50px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid var(--line-strong); background: var(--card-2);
+  font-family: var(--mono); font-size: 16px; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.field input:focus, .field select:focus { background: #fff; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(30, 111, 232, .14); outline: none; }
+.field small { display: block; font-size: 12px; color: var(--faint); margin-top: 6px; }
+.field.is-bad input { border-color: var(--red); background: var(--red-soft); }
+.formnote { padding: 13px 15px; border-radius: 10px; background: var(--blue-soft); color: #10457F; font-size: 12.5px; margin-bottom: 18px; }
+.formerr { color: var(--red); font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+.calc { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 18px; }
+.calc div { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; }
+.calc span { display: block; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+.calc b { font-family: var(--mono); font-size: 17px; font-weight: 600; }
+
+/* ------------------------- Yes / No checkbox toggle ----------------------
+   Rendered as a pair of checkbox-style controls rather than plain segmented
+   buttons: each option shows its own square check-box (::before) that fills
+   with a check mark when selected, so the control reads unambiguously as
+   "tick one" rather than a toggle switch. Sizing/alignment is uniform for
+   every .yn-toggle in the app, at every breakpoint. */
+.yn-toggle { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+.yn-btn {
+  flex: 1 1 96px; min-width: 84px; min-height: 48px; display: inline-flex;
+  align-items: center; justify-content: center; gap: 9px; padding: 0 16px;
+  border-radius: 10px; border: 1.5px solid var(--line-strong);
+  background: var(--card-2); color: var(--muted); font-weight: 600; font-size: 14px;
+  line-height: 1; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .1s, box-shadow .15s;
+}
+.yn-btn::before {
+  content: ""; flex: none; width: 18px; height: 18px; border-radius: 5px;
+  border: 2px solid var(--line-strong); background: #fff; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 900;
+  transition: background .15s, border-color .15s;
+}
+.yn-btn:hover { border-color: var(--line-strong); box-shadow: var(--sh-1); }
+.yn-btn:active { transform: scale(.97); }
+.yn-btn.is-active::before { content: "✓"; }
+.yn-btn.is-active[data-yn-val="yes"] { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+.yn-btn.is-active[data-yn-val="yes"]::before { background: var(--green); border-color: var(--green); }
+.yn-btn.is-active[data-yn-val="no"] { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.yn-btn.is-active[data-yn-val="no"]::before { background: var(--red); border-color: var(--red); }
+.field.is-bad .yn-toggle .yn-btn { border-color: var(--red); }
+@media (max-width: 420px) {
+  .yn-btn { flex-basis: 100%; }
+}
+
+/* ------------------------------ next stop etc ---------------------------- */
+.stop__name { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.stop__meta { display: flex; gap: 22px; margin: 14px 0 16px; }
+.stop__meta div span { display: block; font-size: 11px; color: var(--faint); letter-spacing: .06em; text-transform: uppercase; }
+.stop__meta div b { font-size: 17px; font-weight: 600; font-family: var(--mono); }
+
+.ring-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.ring { position: relative; width: 118px; height: 118px; flex: none; }
+.ring svg { transform: rotate(-90deg); }
+.ring__c { fill: none; stroke: #EDF1F7; stroke-width: 11; }
+.ring__v { fill: none; stroke: url(#ringGrad); stroke-width: 11; stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(.2,.8,.3,1); }
+.ring__lbl { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring__lbl b { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+.ring__lbl span { font-size: 10.5px; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
+.tally { flex: 1 1 180px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.tally div { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+.tally span { display: block; font-size: 11px; color: var(--muted); }
+.tally b { font-size: 17px; font-weight: 600; font-family: var(--mono); }
+
+.vehicle-id { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+.vehicle-id__box { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: var(--navy); color: #fff; }
+.vehicle-id b { font-size: 16px; font-weight: 700; }
+.vehicle-id span { font-size: 12.5px; color: var(--muted); }
+.hrow { padding: 11px 0; border-bottom: 1px dashed var(--line); }
+.hrow:last-child { border-bottom: 0; }
+.hrow__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hrow__name { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.hrow__val { font-size: 12.5px; font-weight: 600; }
+.hrow__val.ok { color: var(--green); }
+.hrow__val.warn { color: var(--amber); }
+.hrow .bar { margin-top: 8px; }
+.doc-warn { display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 11px 13px; border-radius: 10px; font-size: 12.5px; font-weight: 600; background: var(--amber-soft); color: #8A5300; border: 1px solid rgba(199, 119, 0, .2); }
+
+/* Driver Documents view — one card per document type. */
+.docgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.doccard {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-1); padding: 16px 18px; min-width: 0;
+}
+.doccard__icon {
+  flex: none; width: 42px; height: 42px; border-radius: 12px;
+  display: grid; place-items: center; background: var(--blue-soft); color: var(--blue);
+}
+.doccard__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.doccard__body b { font-size: 14.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doccard__status { font-size: 12.5px; color: var(--muted); }
+.doccard.is-missing .doccard__icon { background: var(--card-2); color: var(--faint); }
+.doccard.is-missing .doccard__status { color: var(--faint); }
+.doccard__open { flex: none; min-height: 36px; padding: 8px 16px; font-size: 13px; }
+.doccard__open[aria-disabled="true"] { pointer-events: none; opacity: .45; }
+@media (max-width: 760px) { .docgrid { grid-template-columns: 1fr; } }
+
+/* ------------------------------ quick actions ---------------------------- */
+.qa-head { text-align: center; margin: 22px 0 14px; }
+.qa-head h2 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.qa-head p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.qa { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+.qa button {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 20px 12px; min-height: 106px; border-radius: var(--r-md);
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--sh-1);
+  font-size: 12.5px; font-weight: 600; text-align: center;
+  transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s, border-color .16s;
+}
+.qa button i { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--blue-soft); color: var(--blue); transition: transform .16s, background .16s, color .16s; }
+.qa button i svg { width: 20px; height: 20px; }
+.qa button:hover { transform: translateY(-3px); box-shadow: var(--sh-3); border-color: var(--line-strong); }
+.qa button:hover i { transform: scale(1.06); background: var(--blue); color: #fff; }
+.qa button:active { transform: translateY(-1px) scale(.97); }
+.qa button.is-critical i { background: var(--red-soft); color: var(--red); }
+.qa button.is-critical:hover i { background: var(--red); color: #fff; }
+.qa button.is-warn i { background: var(--amber-soft); color: var(--amber); }
+.qa button.is-warn:hover i { background: var(--amber); color: #fff; }
+.qa button.is-go i { background: var(--green-soft); color: var(--green); }
+.qa button.is-go:hover i { background: var(--green); color: #fff; }
+
+/* Compact variant on the main dashboard: full-width horizontal pills so a
+   short row (as few as two actions) still uses the row's full width and
+   matches the KPI grid's depth/glow/hover language, instead of leaving a
+   narrow island with dead space beside it. */
+.qa--compact {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.qa--compact button {
+  --t-accent: var(--k-blue);
+  position: relative; isolation: isolate; overflow: hidden;
+  flex-direction: row; justify-content: flex-start; text-align: left;
+  gap: 14px; min-height: 0; padding: 16px 20px;
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 1px 2px rgba(15, 39, 72, .05),
+    0 8px 18px -12px rgba(15, 39, 72, .18);
+  transition:
+    transform .28s cubic-bezier(.2,.8,.25,1),
+    box-shadow .28s cubic-bezier(.2,.8,.25,1),
+    border-color .28s ease;
+}
+.qa--compact button::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,.5) 48%, transparent 64%);
+  transform: translateX(-120%);
+  transition: transform .7s cubic-bezier(.3,.7,.3,1);
+}
+.qa--compact button > * { position: relative; z-index: 1; }
+.qa--compact button i { flex: none; width: 40px; height: 40px; border-radius: 11px; }
+.qa--compact button span,
+.qa--compact button { font-size: 14px; }
+.qa--compact button:hover,
+.qa--compact button:focus-visible {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--t-accent) 40%, transparent);
+  box-shadow:
+    0 2px 4px rgba(15, 39, 72, .08),
+    0 16px 28px -12px rgba(15, 39, 72, .26),
+    0 0 0 1px color-mix(in srgb, var(--t-accent) 20%, transparent),
+    0 0 22px -6px color-mix(in srgb, var(--t-accent) 45%, transparent);
+}
+.qa--compact button:hover::after,
+.qa--compact button:focus-visible::after { transform: translateX(120%); }
+.qa--compact button:hover i { transform: scale(1.08) rotate(-3deg); }
+.qa--compact button:active {
+  transform: translateY(-1px) scale(.985);
+  transition-duration: .1s;
+  box-shadow:
+    0 1px 3px rgba(15, 39, 72, .12),
+    0 6px 14px -8px rgba(15, 39, 72, .26),
+    0 0 16px -6px color-mix(in srgb, var(--t-accent) 50%, transparent);
+}
+@media (hover: none) {
+  .qa--compact button:hover { transform: none; box-shadow: 0 1px 2px rgba(15,39,72,.05), 0 8px 18px -12px rgba(15,39,72,.18); }
+  .qa--compact button:hover::after { transform: translateX(-120%); }
+}
+
+/* -------------------------- trip quick actions --------------------------- *
+   Modern card set on the Assigned Trip page — replaces the old .qa buttons  *
+   that used to live on the main dashboard for these five actions.          */
+.tqa {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  margin-bottom: 26px;
+}
+.tqa__card {
+  --tqa-c: var(--blue); --tqa-soft: var(--blue-soft);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 18px 10px 16px; min-height: 100px;
+  border-radius: 16px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--card) 0%, var(--card-2) 100%);
+  box-shadow: var(--sh-1);
+  font-size: 12.5px; font-weight: 700; color: var(--text); text-align: center;
+  transition: transform .18s cubic-bezier(.2,.8,.3,1), box-shadow .18s, border-color .18s;
+}
+.tqa__card::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: var(--tqa-c); transform: scaleX(0); transform-origin: left;
+  transition: transform .22s cubic-bezier(.2,.8,.3,1);
+}
+.tqa__card:hover { transform: translateY(-4px); box-shadow: var(--sh-3); border-color: var(--line-strong); }
+.tqa__card:hover::before { transform: scaleX(1); }
+.tqa__card:active { transform: translateY(-1px) scale(.97); }
+.tqa__icon {
+  width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center;
+  background: var(--tqa-soft); color: var(--tqa-c);
+  transition: transform .18s, background .18s, color .18s;
+}
+.tqa__card:hover .tqa__icon { transform: scale(1.08) rotate(-3deg); background: var(--tqa-c); color: #fff; }
+.tqa__label { letter-spacing: -.01em; }
+
+.tqa__card--blue   { --tqa-c: var(--blue);  --tqa-soft: var(--blue-soft); }
+.tqa__card--teal   { --tqa-c: var(--k-teal); --tqa-soft: #E4F3F5; }
+.tqa__card--red    { --tqa-c: var(--red);   --tqa-soft: var(--red-soft); }
+.tqa__card--amber  { --tqa-c: var(--amber); --tqa-soft: var(--amber-soft); }
+.tqa__card--violet { --tqa-c: var(--k-violet); --tqa-soft: #EFE7FC; }
+
+.tqa__card { animation: kpiRise .45s cubic-bezier(.2,.8,.25,1) backwards; }
+.tqa__card:nth-child(1) { animation-delay: .02s; }
+.tqa__card:nth-child(2) { animation-delay: .06s; }
+.tqa__card:nth-child(3) { animation-delay: .10s; }
+.tqa__card:nth-child(4) { animation-delay: .14s; }
+.tqa__card:nth-child(5) { animation-delay: .18s; }
+
+@media (max-width: 1024px) { .tqa { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px)  { .tqa { grid-template-columns: repeat(2, 1fr); } }
+
+/* --------------------------------- alerts -------------------------------- */
+.alerts { display: flex; flex-direction: column; gap: 10px; }
+.alert { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); transition: background .15s, transform .15s; }
+.alert:hover { background: #F3F6FB; transform: translateX(2px); }
+.alert.amber { border-left-color: var(--amber); }
+.alert.green { border-left-color: var(--green); }
+.alert.red { border-left-color: var(--red); }
+.alert p { font-size: 13px; font-weight: 500; }
+.alert time { font-size: 11.5px; color: var(--faint); }
+
+.tl { position: relative; padding-left: 26px; }
+.tl::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+.tl li { position: relative; padding: 0 0 18px; }
+.tl li:last-child { padding-bottom: 0; }
+.tl li::before { content: ""; position: absolute; left: -24px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--blue); }
+.tl li.done::before { background: var(--green); border-color: var(--green); }
+.tl__t { font-family: var(--mono); font-size: 12px; color: var(--blue); font-weight: 600; }
+.tl__x { font-size: 13.5px; font-weight: 500; }
+
+/* ------------------------------ POD product list ------------------------- */
+.pod-items { display: flex; flex-direction: column; gap: 10px; }
+.pod-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line);
+}
+.pod-item--empty { color: var(--muted); font-size: 13px; justify-content: flex-start; }
+.pod-item__check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 500; }
+.pod-item__check input { width: 18px; height: 18px; accent-color: var(--blue); }
+.pod-item__qty { display: flex; align-items: center; gap: 8px; }
+.pod-item__qty span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.pod-item__qty input {
+  width: 70px; min-height: 38px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line-strong);
+  background: #fff; font-family: var(--mono); font-size: 14px;
+}
+
+/* ------------------------------ POD status picker ------------------------ */
+.pod-status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pod-status__opt {
+  display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
+  padding: 13px 10px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--card-2);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+}
+.pod-status__opt input { accent-color: var(--blue); }
+.pod-status__opt:has(input:checked) { border-color: var(--blue); background: var(--blue-soft); color: #10457F; }
+
+/* ------------------------------ POD report list --------------------------- */
+.pod-reports { display: flex; flex-direction: column; gap: 10px; }
+.pod-report {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 10px;
+  background: var(--card-2); border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+}
+.pod-report p { font-size: 13px; font-weight: 500; }
+.pod-report time { font-size: 11.5px; color: var(--faint); }
+.pod-report--empty { color: var(--muted); font-size: 13px; border-left-color: var(--line); }
+
+@media (max-width: 560px) {
+  .pod-status { grid-template-columns: 1fr; }
+  .pod-item { flex-direction: column; align-items: flex-start; }
+}
+
+.linkbtn { border: 0; background: transparent; color: var(--blue); font-size: 12.5px; font-weight: 600; padding: 4px 0; }
+.linkbtn:hover { opacity: .72; }
+.foot { text-align: center; color: var(--faint); font-size: 11.5px; padding: 26px 0 8px; }
+
+/* ==========================================================================
+   RESPONSIVE SYSTEM — one consistent tier ladder used across the dashboard:
+     desktop  ≥1440px   laptop  1101–1439px   tablet  641–1100px
+     mobile   481–640px   phone  ≤480px
+   Each tier is written once, in descending width order, so rules never
+   fight a later/earlier block for the same property at the same width.
+   ========================================================================== */
+
+/* ---- laptop (1101–1439px): tray/hub layouts drop to a single column ---- */
+@media (max-width: 1439px) and (min-width: 1101px) {
+  .grid-main { grid-template-columns: 1fr; }
+}
+
+/* ---- tablet (641–1100px) ---- */
+@media (max-width: 1100px) and (min-width: 641px) {
+  .grid-main { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .qa { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+  .grid-3 > :first-child { grid-column: 1 / -1; }
+  .hdr__meta dl { display: none; }
+  .avbtn__txt { display: none; }
+  .avbtn { padding: 4px; }
+}
+
+/* ---- mobile / large phone (481–640px) ---- */
+@media (max-width: 640px) {
+  .shell { padding: 0 14px 32px; }
+  .hdr { padding: 12px 14px; gap: 10px; }
+  .hdr__title { font-size: 14.5px; }
+  .hdr__meta dl { display: none; }
+  .avbtn__txt { display: none; }
+  .avbtn { padding: 4px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-3 > :first-child { grid-column: auto; }
+  .qa { grid-template-columns: repeat(2, 1fr); }
+  .card__bd { padding: 16px; }
+  .calc { grid-template-columns: 1fr; }
+  .panel { width: 100%; max-width: none; border-left: 0; }
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 12px; perspective: 900px; }
+  .kpi { min-height: 128px; padding: 16px 16px 18px; }
+  .kpi__val { font-size: 28px; margin-top: 9px; }
+  .kpi__label { font-size: 10.5px; letter-spacing: .07em; }
+  .kpi__sub { font-size: 12px; }
+  .starttop { padding: 18px 0 2px; }
+  .kpi--start { padding: 16px 18px; gap: 14px; }
+  .kpi--start .kpi__val { font-size: 24px; }
+  .kpi--start__glyph { width: 44px; height: 44px; }
+  .startband .btn { flex: 1 1 100%; }
+  .rest-alert { bottom: 20px; }
+}
+
+/* ---- phone (≤480px) ---- */
+@media (max-width: 480px) {
+  .kpis { grid-template-columns: 1fr; }
+  .kpi { min-height: 0; }
+  .kpi__val { font-size: 30px; }
+  .hdr { gap: 8px; }
+  .hdr__brand { gap: 8px; }
+  .hdr__sub { display: none; }
+  .hdr__tools { gap: 6px; }
+  .bell, .avbtn { flex: none; }
+}
+
+/* ---- very narrow phones (≤360px): keep the header on one line ---- */
+@media (max-width: 360px) {
+  .mark { width: 32px; height: 32px; border-radius: 8px; }
+  .mark svg { width: 16px; height: 16px; }
+  .hdr__title { font-size: 12.5px; }
+  .bell { width: 34px; height: 34px; }
+  .avatar { width: 30px; height: 30px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .kpi, .kpi:hover, .kpi:active, .kpi.is-lit { transform: none !important; }
+  .kpi::before { transform: scaleX(1); }
+  .kpi::after { display: none; }
+}
+
+/* Times New Roman applies to form controls too — browsers default these to a system font. */
+input, select, textarea, button { font-family: var(--font); }
+
+/* ========================= VEHICLE CHECK-IN ==============================
+   Each inspection card carries its own verdict. The left edge colour is the
+   at-a-glance signal; the pill spells it out for anyone not relying on hue.
+   ====================================================================== */
+.checkcard {
+  border-left: 4px solid var(--line-strong);
+  transition: border-color .3s ease, box-shadow .3s ease;
+}
+.checkcard.is-pass { border-left-color: var(--green); }
+.checkcard.is-monitor { border-left-color: var(--amber); }
+.checkcard.is-defect { border-left-color: var(--red); box-shadow: 0 0 0 1px rgba(211,53,43,.16), var(--sh-2); }
+.checkcard + .checkcard { margin-top: 16px; }
+.checkcard .card__hd h2 { display: flex; align-items: center; gap: 10px; }
+
+/* Tyre-count filter — sits top-right of the Tyres check card, next to the
+   status pill, and drives how many tyres the 3D viewer/fallback grid show. */
+.card__hd-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.tyrefilter { display: flex; align-items: center; gap: 8px; }
+.tyrefilter__label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.tyrefilter__select {
+  font-family: var(--font); font-size: 12.5px; font-weight: 700; color: var(--text);
+  background: var(--card-2); border: 1px solid var(--line-strong); border-radius: 999px;
+  padding: 6px 14px; cursor: pointer; transition: border-color .16s, background .16s;
+}
+.tyrefilter__select:hover { border-color: var(--blue); }
+.tyrefilter__select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .card__hd { flex-wrap: wrap; }
+  .card__hd-right { width: 100%; justify-content: space-between; }
+}
+
+/* Fallback tyre grid: 8/12/16-tyre layouts have more positions than the
+   original 4, so let it wrap to three columns once there's more to show. */
+.veh3d__fallback-grid.is-wide { grid-template-columns: repeat(3, 1fr); gap: 14px 20px; }
+
+
+.checknum {
+  width: 25px; height: 25px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  background: var(--blue-soft); color: var(--blue);
+  font-size: 12.5px; font-weight: 700;
+}
+.checkcard.is-pass .checknum { background: var(--green-soft); color: var(--green); }
+.checkcard.is-monitor .checknum { background: var(--amber-soft); color: var(--amber); }
+.checkcard.is-defect .checknum { background: var(--red-soft); color: var(--red); }
+
+.checkpill {
+  font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+  background: var(--card-2); color: var(--muted); border: 1px solid var(--line);
+  transition: background .3s ease, color .3s ease, border-color .3s ease;
+}
+.checkpill.is-pass { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.checkpill.is-monitor { background: var(--amber-soft); color: var(--amber); border-color: rgba(199,119,0,.28); }
+.checkpill.is-defect { background: var(--red-soft); color: var(--red); border-color: rgba(211,53,43,.3); }
+
+/* ============================= LIVE TRIP MAP ============================
+   Restyled to read as a modern vector map: cool neutral base, cartographic
+   label treatment (halo behind text so labels stay legible over the route),
+   and pins built from a shared shape so roles differ only by colour.
+   ====================================================================== */
+.tripmap {
+  position: relative; border-radius: var(--r-md); overflow: hidden;
+  border: 1px solid var(--line);
+  background: #F7FAFD;
+  box-shadow: inset 0 1px 3px rgba(15, 39, 72, .06);
+}
+.tripmap__svg { display: block; width: 100%; height: auto; }
+
+/* Halo keeps every label readable wherever it lands. */
+.tripmap text {
+  font-family: var(--font); font-size: 11.5px; font-weight: 700;
+  text-anchor: middle; letter-spacing: .03em;
+  paint-order: stroke fill;
+  stroke: rgba(247, 250, 253, .92); stroke-width: 3.5px; stroke-linejoin: round;
+}
+
+/* hubs — hollow markers so they sit behind the active pins */
+.mhub circle { fill: #FFF; stroke: #94A3B8; stroke-width: 2.5; transition: stroke .25s ease; }
+.mhub text { fill: #64748B; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; }
+.mhub:hover circle { stroke: var(--blue); }
+
+/* pins share one shape; colour separates the roles */
+.mpin circle { stroke-width: 3.5; fill: #FFF; filter: url(#pinShadow); }
+.mpin__core { stroke: none; filter: none; }
+.mpin--start circle { stroke: #3B82F6; }
+.mpin--start .mpin__core { fill: #3B82F6; }
+.mpin--start text { fill: #1D4ED8; }
+.mpin--end circle { stroke: #8B5CF6; }
+.mpin--end .mpin__core { fill: #8B5CF6; }
+.mpin--end text { fill: #6D28D9; }
+.mpin--next circle { stroke: #F59E0B; }
+.mpin--next .mpin__core { fill: #F59E0B; }
+.mpin--next text { fill: #B45309; }
+.mpin__halo { fill: rgba(245, 158, 11, .18); stroke: none; animation: haloPulse 2.4s ease-in-out infinite; }
+@keyframes haloPulse { 0%,100% { opacity:.3; transform: scale(.8);} 50% { opacity:1; transform: scale(1.1);} }
+.mpin--next .mpin__halo { transform-box: fill-box; transform-origin: center; }
+
+/* vehicle marker */
+.mveh__pulse { fill: rgba(34, 197, 94, .2); animation: haloPulse 2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.mveh__ring { fill: #FFF; stroke: #22C55E; stroke-width: 3.5; filter: url(#pinShadow); }
+.mveh__dot { fill: #16A34A; }
+.mveh text { fill: #15803D; font-size: 11px; }
+.mveh { transition: transform 1.5s cubic-bezier(.3,.8,.3,1); }
+
+/* legend as chips rather than a plain list */
+.maplegend {
+  display: flex; flex-wrap: wrap; gap: 8px; list-style: none;
+  padding: 12px 14px; border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, .82); backdrop-filter: blur(6px);
+}
+.maplegend li {
+  display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; color: #475569;
+  background: var(--card); border: 1px solid var(--line);
+  padding: 5px 11px; border-radius: 999px;
+}
+.lg { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.lg--start { background: #3B82F6; }
+.lg--hub { background: #FFF; border: 2.5px solid #94A3B8; }
+.lg--veh { background: #22C55E; box-shadow: 0 0 0 3px rgba(34,197,94,.22); }
+.lg--next { background: #F59E0B; }
+.lg--end { background: #8B5CF6; }
+.lg--route { width: 18px; height: 4px; border-radius: 2px; background: linear-gradient(90deg,#3B82F6,#14B8A6,#22C55E); }
+
+.mapstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.mapstats > div {
+  background: var(--card-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 13px 15px; transition: transform .22s ease, box-shadow .22s ease;
+}
+.mapstats > div:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+.mapstats span {
+  display: block; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.mapstats b { font-size: 17px; font-family: var(--mono); }
+
+/* Hub filter control in the map card header */
+.maphd__tools { display: flex; align-items: center; gap: 10px; }
+.mapfilter {
+  min-height: 34px; padding: 6px 30px 6px 12px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--card);
+  font-size: 12.5px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+
+/* Status-coloured hub pins on the map (driven by JS from HUBS data) */
+.mhub.is-done circle { fill: var(--green-soft); stroke: var(--green); }
+.mhub.is-current circle { fill: var(--blue-soft); stroke: var(--blue); }
+.mhub.is-next circle { fill: var(--amber-soft); stroke: var(--amber); }
+.mhub.is-active circle { stroke-width: 4; r: 9; }
+
+/* Selected-hub info panel below the map stats */
+.maphubinfo {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  margin-top: 14px; padding: 14px 16px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--line);
+}
+.maphubinfo__name { font-size: 15px; font-weight: 700; margin-top: 3px; }
+.maphubinfo__loc { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+@media (max-width: 760px) {
+  .mapstats { grid-template-columns: repeat(2, 1fr); }
+  .tripmap text { font-size: 13px; }
+  .mhub text { font-size: 12px; }
+  .maplegend { gap: 7px 14px; }
+  .maplegend li { font-size: 11.5px; }
+  .maphd__tools { flex-wrap: wrap; }
+}
+
+/* ===================== CHECK KPI TILES (vehicle check) ==================== */
+.kpis--checks { margin-bottom: 18px; }
+
+/* State ribbon pinned to the tile's bottom edge. */
+.kpi__state {
+  margin-top: auto; align-self: flex-start;
+  font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 999px;
+  background: var(--card-2); color: var(--muted); border: 1px solid var(--line);
+  transition: background .3s ease, color .3s ease, border-color .3s ease;
+}
+.kpi__state.is-pass, .kpi__state.is-verified { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.kpi__state.is-monitor { background: var(--amber-soft); color: var(--amber); border-color: rgba(199,119,0,.28); }
+.kpi__state.is-defect { background: var(--red-soft); color: var(--red); border-color: rgba(211,53,43,.3); }
+
+.kpi--check .kpi__sub { min-height: 2.2em; }
+.kpi--check.is-verified { --k-accent: var(--green); }
+.kpi--check.is-monitor { --k-accent: var(--amber); }
+.kpi--check.is-defect { --k-accent: var(--red); }
+
+/* Open tile keeps the lit treatment so it pairs with the detail card below. */
+.kpi--check.is-open {
+  border-color: color-mix(in srgb, var(--k-accent) 55%, transparent);
+  box-shadow:
+    0 2px 4px rgba(90,68,44,.08),
+    0 16px 30px -14px rgba(90,68,44,.3),
+    0 0 0 2px color-mix(in srgb, var(--k-accent) 32%, transparent),
+    inset 0 1px 0 rgba(255,255,255,1);
+}
+.kpi--check.is-open::before { transform: scaleX(1); }
+.kpi--check.is-verified .kpi__val { color: var(--green); }
+
+/* Trip Start tile in its locked state. */
+.kpi--triptile { min-height: 168px; flex-direction: row; }
+.kpi--triptile.is-locked {
+  background: linear-gradient(150deg, #2C3A33 0%, #38473F 55%, #2C3A33 100%);
+  border-color: rgba(255,255,255,.12);
+  cursor: not-allowed; animation: kpiRise .5s cubic-bezier(.2,.8,.25,1) backwards;
+  box-shadow: 0 1px 2px rgba(15,39,72,.14), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.kpi--triptile.is-locked .kpi__val { color: rgba(255,255,255,.5); font-size: 24px; }
+.kpi--triptile.is-locked .kpi--start__glyph { background: rgba(255,255,255,.06); color: rgba(255,255,255,.4); }
+.kpi--triptile.is-locked:hover { transform: none; }
+.kpi--triptile.is-locked .kpi--start__go { opacity: .3; }
+
+/* Verification progress under the tiles. */
+.checkprogress { margin: 0 0 22px; }
+.checkprogress__bar {
+  height: 8px; border-radius: 999px; overflow: hidden;
+  background: rgba(160,143,124,.22); margin-bottom: 10px;
+}
+.checkprogress__bar i {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #1E6FE8, #0F9D58);
+  transition: width .5s cubic-bezier(.2,.8,.25,1);
+}
+.checkprogress p { font-size: 13px; color: var(--muted); }
+.checkprogress b { color: var(--text); }
+
+/* Top-of-page variant — sits above the check cards on Vehicle check-in. */
+.checkprogress--top {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-1); padding: 16px 18px 18px; margin-bottom: 24px;
+}
+.checkprogress--top .checkprogress__hd {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px;
+}
+.checkprogress--top .checkprogress__lbl { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.checkprogress--top .checkprogress__pct { font-size: 12.5px; color: var(--muted); }
+.checkprogress--top .checkprogress__bar { height: 10px; margin-bottom: 10px; }
+.checkprogress--top .checkprogress__foot { font-size: 12px; color: var(--muted); }
+
+/* ========================== HUBS & STOPS ================================ */
+.hubpair {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center;
+  padding: 16px; margin-bottom: 18px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.hubpair__item { min-width: 0; }
+.hubpair__name { font-weight: 700; font-size: 15px; margin-top: 4px; }
+.hubpair__meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.hubpair__arrow { color: var(--muted); font-size: 20px; }
+.hubpair__item.is-current .hubpair__name { color: var(--green); }
+.hubpair__item.is-next .hubpair__name { color: var(--amber); }
+
+.hubnav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.hubnav__btn {
+  width: 38px; height: 38px; flex: none; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--card); border: 1px solid var(--line-strong); color: var(--text);
+  transition: background .22s ease, border-color .22s ease, transform .22s ease;
+}
+.hubnav__btn:hover:not(:disabled) { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); transform: scale(1.06); }
+.hubnav__btn:disabled { opacity: .35; cursor: not-allowed; }
+.hubnav__btn--next svg { transform: rotate(180deg); }
+
+.hubpipeline {
+  display: flex; align-items: flex-start; gap: 0; flex: 1; overflow-x: auto;
+  padding: 6px 2px 10px; scroll-behavior: smooth;
+  -ms-overflow-style: none; scrollbar-width: thin;
+}
+.hubpipe__node {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  flex: none; width: 88px; background: none; border: 0; cursor: pointer; padding: 4px 0;
+  position: relative;
+}
+.hubpipe__node:not(:first-child)::before {
+  content: ""; position: absolute; left: -44px; right: 44px; top: 9px; height: 2px;
+  background: var(--line-strong); z-index: 0;
+}
+.hubpipe__node.is-done:not(:first-child)::before,
+.hubpipe__node.is-current:not(:first-child)::before { background: var(--green); }
+.hubpipe__dot {
+  width: 20px; height: 20px; border-radius: 50%; flex: none; position: relative; z-index: 1;
+  background: var(--card); border: 2px solid var(--line-strong);
+  transition: transform .22s ease, box-shadow .22s ease, background .22s ease, border-color .22s ease;
+}
+.hubpipe__node.is-done .hubpipe__dot { background: var(--green); border-color: var(--green); }
+.hubpipe__node.is-current .hubpipe__dot { background: var(--blue); border-color: var(--blue); }
+.hubpipe__node.is-next .hubpipe__dot { background: var(--amber); border-color: var(--amber); }
+.hubpipe__node.is-active .hubpipe__dot { transform: scale(1.25); box-shadow: 0 0 0 4px rgba(30,111,232,.16); }
+.hubpipe__label {
+  font-size: 11px; font-weight: 600; color: var(--muted); text-align: center;
+  line-height: 1.25; max-width: 88px;
+}
+.hubpipe__node.is-active .hubpipe__label { color: var(--text); }
+
+.hubdetail { border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px; background: var(--card); }
+.hubdetail.is-swap { animation: hubSwap .34s cubic-bezier(.2,.8,.25,1); }
+@keyframes hubSwap { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+.hubdetail__hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.hubdetail__badge {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--blue); background: var(--blue-soft); padding: 4px 10px; border-radius: 999px; margin-bottom: 8px;
+}
+.hubdetail__loc { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.hubstatus {
+  flex: none; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 999px; background: var(--card-2); color: var(--muted); border: 1px solid var(--line);
+}
+.hubstatus.is-done { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.hubstatus.is-current { background: var(--blue-soft); color: var(--blue); border-color: rgba(30,111,232,.28); }
+.hubstatus.is-next { background: var(--amber-soft); color: var(--amber); border-color: rgba(199,119,0,.28); }
+/* Trip Details popup status badge (#tdTripStatus) — reuses the same
+   colour scheme as .triprow's status pill so a trip's colour is
+   consistent between the Trip Attendance list and its details popup. */
+.hubstatus.is-completed { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.hubstatus.is-active { background: var(--blue-soft); color: var(--blue); border-color: rgba(30,111,232,.28); }
+.hubstatus.is-cancelled { background: var(--red-soft); color: var(--red); border-color: rgba(211,53,43,.3); }
+.hubstatus.is-scheduled { background: var(--card-2); color: var(--muted); border-color: var(--line); }
+
+/* ==================== TODAY'S TRIPS / ATTENDANCE ======================== */
+.welcome__att {
+  min-height: 0; padding: 16px 18px; text-align: left;
+  align-items: stretch; min-width: 260px;
+}
+.welcome__att .kpi__label { min-height: 0; margin-bottom: 12px; }
+.welcome__att .kpi__sub { min-height: 0; margin-top: 10px; }
+.att__row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.att__cell { display: flex; flex-direction: column; align-items: flex-start; }
+.att__cell b { font-family: var(--mono); font-size: 24px; line-height: 1.1; }
+.att__cell small { font-size: 10.5px; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-top: 2px; }
+.att__cell.is-done b { color: var(--green); }
+.att__cell.is-cancel b { color: var(--red); }
+.att__cell.is-total b { color: var(--text); }
+.att__bar { margin-top: 12px; }
+
+.triplist { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.triprow {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 13px 15px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+.triprow:hover { transform: translateX(3px); box-shadow: var(--sh-1); }
+.triprow.is-completed { border-left-color: var(--green); }
+.triprow.is-active { border-left-color: var(--blue); background: var(--blue-soft); }
+.triprow.is-scheduled { border-left-color: var(--muted); }
+.triprow.is-cancelled { border-left-color: var(--red); }
+.triprow__main { min-width: 0; }
+.triprow__id { font-family: var(--mono); font-size: 14px; }
+.triprow__route { display: block; font-size: 13px; margin-top: 2px; }
+.triprow__meta { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.triprow__status {
+  flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--muted);
+}
+.triprow.is-completed .triprow__status { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.triprow.is-active .triprow__status { background: var(--blue-soft); color: var(--blue); border-color: rgba(30,111,232,.3); }
+.triprow.is-cancelled .triprow__status { background: var(--red-soft); color: var(--red); border-color: rgba(211,53,43,.3); }
+
+/* Trip Attendance row "View" button — opens the Trip Details popup for
+   that specific trip. Deliberately compact: the base .btn sizing (46px
+   min-height, flexible width) is built for full-width action buttons, not
+   an inline control inside a list row. */
+.triprow__view {
+  flex: none; font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: 8px;
+  border: 1px solid var(--line-strong); background: var(--card); color: var(--blue); cursor: pointer;
+  transition: transform .15s, box-shadow .15s, background .15s;
+}
+.triprow__view:hover { background: var(--blue-soft); box-shadow: var(--sh-1); transform: translateY(-1px); }
+.triprow__view:active { transform: translateY(0); }
+/* Today's Trip row's own Start Trip button — same compact sizing as
+   .triprow__view, but green/filled so it reads as the primary action,
+   distinct from the neutral outline "View" button in Trip Attendance. */
+.triprow__view.is-start { background: var(--green); border-color: var(--green); color: #fff; }
+.triprow__view.is-start:hover { background: #0c8a4c; box-shadow: var(--sh-1); }
+
+/* Today's Trip rows now carry Trip Name / Route / Locations / Start date
+   on top of ID + status, so allow the row to wrap rather than compress
+   everything into one cramped line on narrow widths. */
+#dashTodayTripList .triprow { flex-wrap: wrap; align-items: flex-start; }
+#dashTodayTripList .triprow__status { margin-top: 2px; }
+
+.attsum { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.attsum__ring { position: relative; flex: none; }
+.attsum__ring svg { transform: rotate(-90deg); }
+.attsum__nums { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 10px; }
+.attsum__nums > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.attsum__nums span { font-size: 13px; color: var(--muted); }
+.attsum__nums b { font-family: var(--mono); font-size: 20px; }
+
+@media (max-width: 760px) {
+  .hubpair { grid-template-columns: 1fr; text-align: left; }
+  .hubpair__arrow { transform: rotate(90deg); justify-self: start; }
+  .welcome__att { min-width: 0; width: 100%; }
+  .attsum { justify-content: center; }
+}
+
+/* ======================= TILE CARDS (reference style) ====================
+   Centred icon in a soft tinted square, label beneath — per the supplied
+   reference. One --t-accent per state drives icon tint, ring and glow.
+   ====================================================================== */
+.tilegrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
+  perspective: 1200px;
+}
+.tilecard {
+  --t-accent: var(--blue);
+  --t-soft: var(--blue-soft);
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 4px; padding: 26px 18px 20px; cursor: pointer;
+  min-height: 214px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  transform-style: preserve-3d;
+  box-shadow: 0 1px 2px rgba(15,39,72,.05), 0 8px 18px -12px rgba(15,39,72,.18);
+  transition:
+    transform .32s cubic-bezier(.2,.8,.25,1),
+    box-shadow .32s cubic-bezier(.2,.8,.25,1),
+    border-color .32s ease;
+}
+.tilecard::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,.5) 48%, transparent 64%);
+  transform: translateX(-120%);
+  transition: transform .7s cubic-bezier(.3,.7,.3,1);
+}
+.tilecard > * { position: relative; z-index: 2; }
+
+.tilecard__num {
+  position: absolute; top: 14px; left: 16px; z-index: 3;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--card-2); border: 1px solid var(--line);
+}
+.tilecard__icon {
+  width: 64px; height: 64px; border-radius: 18px; flex: none;
+  display: grid; place-items: center; margin-bottom: 12px;
+  background: var(--t-soft); color: var(--t-accent);
+  transition: transform .32s cubic-bezier(.2,.8,.25,1), background .32s ease, color .32s ease, box-shadow .32s ease;
+}
+.tilecard__icon svg { width: 28px; height: 28px; }
+.tilecard__label { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.tilecard__sub { font-size: 12.5px; color: var(--muted); line-height: 1.45; max-width: 22ch; }
+.tilecard__state {
+  margin-top: auto; padding-top: 14px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.tilecard__state.is-verified { color: var(--green); }
+.tilecard__state.is-pass { color: var(--green); }
+.tilecard__state.is-monitor { color: var(--amber); }
+.tilecard__state.is-defect { color: var(--red); }
+
+/* hover / focus / touch */
+.tilecard:hover, .tilecard:focus-visible, .tilecard.is-lit {
+  transform: translateY(-7px) rotateX(4deg) scale(1.02);
+  border-color: color-mix(in srgb, var(--t-accent) 42%, transparent);
+  box-shadow:
+    0 2px 4px rgba(15,39,72,.07),
+    0 20px 36px -14px rgba(15,39,72,.28),
+    0 0 0 1px color-mix(in srgb, var(--t-accent) 20%, transparent),
+    0 0 30px -6px color-mix(in srgb, var(--t-accent) 45%, transparent);
+}
+.tilecard:hover .tilecard__icon, .tilecard.is-lit .tilecard__icon {
+  transform: scale(1.08) translateZ(24px);
+  background: var(--t-accent); color: #FFF;
+  box-shadow: 0 10px 22px -8px color-mix(in srgb, var(--t-accent) 70%, transparent);
+}
+.tilecard:hover::after, .tilecard.is-lit::after { transform: translateX(120%); }
+.tilecard:active { transform: translateY(-3px) scale(.985); transition-duration: .1s; }
+.tilecard:focus-visible { outline: 2px solid var(--t-accent); outline-offset: 3px; }
+
+/* state accents */
+.tilecard.is-verified, .tilecard.is-pass { --t-accent: var(--green); --t-soft: var(--green-soft); }
+.tilecard.is-monitor { --t-accent: var(--amber); --t-soft: var(--amber-soft); }
+.tilecard.is-defect { --t-accent: var(--red); --t-soft: var(--red-soft); }
+.tilecard.is-verified .tilecard__num { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.3); }
+
+/* verified tick */
+.tilecard.is-verified .tilecard__icon::after {
+  content: "✓"; position: absolute; margin: -42px 0 0 44px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--green); color: #FFF; font-size: 12px; font-weight: 700;
+  display: grid; place-items: center; border: 2px solid var(--card);
+}
+
+/* Trip start tile */
+.tilecard--trip { --t-accent: #2FD07A; --t-soft: rgba(47,208,122,.16); }
+.tilecard--trip:not(.is-locked) {
+  background: linear-gradient(150deg, #0F3D2A 0%, #12673F 52%, #0B7C45 100%);
+  border-color: rgba(47,208,122,.36);
+}
+.tilecard--trip:not(.is-locked) .tilecard__label { color: #FFF; }
+.tilecard--trip:not(.is-locked) .tilecard__sub { color: rgba(223,251,236,.66); }
+.tilecard--trip:not(.is-locked) .tilecard__state { color: #6FE7AE; }
+.tilecard--trip:not(.is-locked) .tilecard__icon { background: rgba(255,255,255,.14); color: #DFFBEC; }
+.tilecard--trip.is-locked {
+  cursor: not-allowed; background: var(--card-2);
+  --t-accent: var(--muted); --t-soft: rgba(160,143,124,.16);
+}
+.tilecard--trip.is-locked:hover { transform: none; box-shadow: 0 1px 2px rgba(15,39,72,.05); border-color: var(--line); }
+.tilecard--trip.is-locked:hover .tilecard__icon { transform: none; background: var(--t-soft); color: var(--muted); box-shadow: none; }
+
+.tilecard { animation: kpiRise .5s cubic-bezier(.2,.8,.25,1) backwards; }
+.tilecard:nth-child(1) { animation-delay: .04s; }
+.tilecard:nth-child(2) { animation-delay: .09s; }
+.tilecard:nth-child(3) { animation-delay: .14s; }
+.tilecard:nth-child(4) { animation-delay: .19s; }
+.tilecard:nth-child(5) { animation-delay: .24s; }
+.tilecard:nth-child(6) { animation-delay: .29s; }
+
+@media (hover: none) { .tilecard:hover { transform: none; } }
+@media (max-width: 760px) {
+  .tilegrid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .tilecard { min-height: 178px; padding: 20px 12px 16px; border-radius: 16px; }
+  .tilecard__icon { width: 54px; height: 54px; border-radius: 15px; margin-bottom: 9px; }
+  .tilecard__icon svg { width: 24px; height: 24px; }
+  .tilecard__label { font-size: 14px; }
+  .tilecard__sub { font-size: 11.5px; }
+}
+@media (max-width: 400px) { .tilegrid { grid-template-columns: 1fr; } }
+
+/* =============== DASHBOARD KPI ALIGNMENT (consistent sizing) ============= */
+/* Every tile occupies the same footprint regardless of whether it carries a
+   progress bar, so the grid reads as one clean block rather than a ragged
+   set of boxes. The bar slot is reserved even when empty. */
+.kpis { align-items: stretch; grid-auto-rows: 1fr; }
+.kpi { height: 100%; }
+.kpi__val { margin-top: auto; }              /* values sit on a shared line */
+.kpi__sub { margin-top: 8px; }
+
+/* Reserve the bar slot on tiles that don't have one, so every card's content
+   ends at the same height. */
+.kpis > .kpi:not(.kpi--start):not(.kpi--att)::after { pointer-events: none; }
+.kpi:not(:has(.kpi__bar)) .kpi__sub { padding-bottom: 22px; }
+
+/* Consistent, denser rhythm across breakpoints. */
+@media (min-width: 1101px) { .kpis { grid-template-columns: repeat(4, 1fr); gap: 18px; } }
+/* 641–1100px and below are set once, in the consolidated RESPONSIVE SYSTEM block above. */
+
+/* ================== HUBS & STOPS — refined presentation ================= */
+.hubpair {
+  position: relative; overflow: hidden;
+  background: linear-gradient(150deg, var(--card) 0%, var(--card-2) 100%);
+  border: 1px solid var(--line); border-radius: 16px;
+  padding: 18px 20px; gap: 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.hubpair::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, var(--green), var(--amber));
+}
+.hubpair__item { padding-left: 4px; }
+.hubpair__name { font-size: 16px; letter-spacing: -.01em; }
+.hubpair__meta { font-family: var(--mono); font-size: 12px; }
+.hubpair__arrow {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 15px;
+  box-shadow: var(--sh-1);
+}
+
+.hubnav {
+  padding: 12px 14px; margin-bottom: 18px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 14px;
+}
+.hubpipeline { padding: 10px 6px 12px; }
+.hubpipe__dot { position: relative; width: 14px; height: 14px; }
+.hubpipe__node.is-active .hubpipe__dot { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 22%, transparent); }
+.hubnav__btn { box-shadow: var(--sh-1); }
+
+.hubdetail {
+  border-radius: 16px; padding: 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(15,39,72,.04), 0 10px 24px -16px rgba(15,39,72,.24);
+}
+.hubdetail__hd { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.hubdetail .stop__name { font-size: 20px; letter-spacing: -.02em; margin-top: 2px; }
+.hubdetail__loc { display: flex; align-items: center; gap: 6px; }
+
+/* Metrics row: single ETA column, mono figures, clear separation. */
+.hubdetail .stop__meta {
+  display: grid; grid-template-columns: 1fr; gap: 0;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 12px;
+  overflow: hidden; margin: 0;
+}
+.hubdetail .stop__meta > div {
+  padding: 14px 16px; text-align: left;
+  border-right: 1px solid var(--line);
+}
+.hubdetail .stop__meta > div:last-child { border-right: 0; }
+.hubdetail .stop__meta span {
+  display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 5px;
+}
+.hubdetail .stop__meta b { font-family: var(--mono); font-size: 17px; font-weight: 500; }
+
+.hubdetail .deflist > div { padding: 10px 0; }
+.hubdetail .deflist dt { font-size: 12.5px; }
+.hubdetail .deflist dd { font-size: 13px; font-weight: 600; }
+
+/* Flash when the driver is returned here after saving a POD. */
+.is-flash { animation: cardFlash 1.5s ease-out; }
+@keyframes cardFlash {
+  0% { box-shadow: 0 0 0 0 rgba(15,157,88,.5); }
+  100% { box-shadow: 0 0 0 16px rgba(15,157,88,0); }
+}
+
+@media (max-width: 760px) {
+  .hubdetail { padding: 16px; }
+  .hubdetail .stop__meta { grid-template-columns: 1fr; }
+  .hubdetail .stop__meta > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .hubdetail .stop__meta > div:last-child { border-bottom: 0; }
+  .hubdetail .stop__name { font-size: 17px; }
+}
+
+/* =================== LIVE TRIP MAP — modern treatment =================== */
+.tripmap {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 10px 26px -18px rgba(15,39,72,.35);
+}
+.tripmap__svg { border-bottom: 1px solid var(--line); }
+
+/* Labels sit on a soft plate so they stay legible over the route. */
+.tripmap text {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  paint-order: stroke fill;
+  stroke: rgba(255,255,255,.92); stroke-width: 3.5px; stroke-linejoin: round;
+}
+.mhub text { font-size: 9.5px; letter-spacing: .08em; }
+.mhub circle { fill: #FFF; stroke: #8FA3BC; stroke-width: 2.5; }
+.mhub text { fill: #64748B; }
+
+.mpin circle { fill: #FFF; stroke-width: 3.5; }
+.mveh__ring { fill: #FFF; stroke-width: 3.5; }
+
+/* Legend reads as a toolbar strip rather than a plain list. */
+.maplegend {
+  background: var(--card-2);
+  padding: 13px 16px; gap: 8px 14px;
+  border-top: 0;
+}
+.maplegend li {
+  background: var(--card); border: 1px solid var(--line);
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600;
+}
+
+.mapstats > div {
+  border-radius: 12px; padding: 14px 16px;
+  background: linear-gradient(150deg, var(--card) 0%, var(--card-2) 100%);
+  transition: transform .24s cubic-bezier(.2,.8,.25,1), box-shadow .24s ease;
+}
+.mapstats > div:hover { transform: translateY(-3px); box-shadow: var(--sh-2); }
+.mapstats span { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+.mapstats b { font-family: var(--mono); font-size: 18px; font-weight: 500; }
+
+/* ==================== VEHICLE CHECK CARDS (qa style) ===================== */
+/* Same card language as the dashboard quick actions, with a status ribbon. */
+.qa--checks { grid-template-columns: repeat(6, 1fr); margin-bottom: 20px; }
+.qa--checks button { min-height: 132px; justify-content: flex-start; gap: 9px; }
+.qa__label { font-weight: 700; font-size: 14px; }
+.qa__state {
+  margin-top: auto;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--card-2); color: var(--muted); border: 1px solid var(--line);
+  transition: background .25s ease, color .25s ease, border-color .25s ease;
+}
+.qa__state.is-pass, .qa__state.is-verified { background: var(--green-soft); color: var(--green); border-color: rgba(15,157,88,.28); }
+.qa__state.is-monitor { background: var(--amber-soft); color: var(--amber); border-color: rgba(199,119,0,.28); }
+.qa__state.is-defect { background: var(--red-soft); color: var(--red); border-color: rgba(211,53,43,.3); }
+
+/* Verified checks get a green icon tile and a soft ring. */
+.qa--checks button.is-verified i { background: var(--green-soft); color: var(--green); }
+.qa--checks button.is-verified:hover i { background: var(--green); color: #fff; }
+.qa--checks button.is-verified { border-color: rgba(15,157,88,.34); box-shadow: 0 0 0 1px rgba(15,157,88,.12), var(--sh-1); }
+.qa--checks button.is-defect i { background: var(--red-soft); color: var(--red); }
+.qa--checks button.is-defect { border-color: rgba(211,53,43,.34); }
+.qa--checks button.is-monitor i { background: var(--amber-soft); color: var(--amber); }
+
+/* Locked trip-start card sits visibly inert until the checks clear. */
+.qa--trip.is-locked { opacity: .55; cursor: not-allowed; background: var(--card-2); }
+.qa--trip.is-locked i { background: rgba(160,143,124,.18); color: var(--muted); }
+.qa--trip.is-locked:hover { transform: none; box-shadow: var(--sh-1); border-color: var(--line); }
+.qa--trip.is-locked:hover i { background: rgba(160,143,124,.18); color: var(--muted); transform: none; }
+.qa--trip:not(.is-locked) {
+  border-color: rgba(15,157,88,.4);
+  box-shadow: 0 0 0 1px rgba(15,157,88,.14), 0 10px 24px -14px rgba(15,157,88,.6);
+}
+
+@media (max-width: 1100px) { .qa--checks { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 620px)  { .qa--checks { grid-template-columns: repeat(2, 1fr); } }
+
+/* ==================== DASHBOARD KPI ALIGNMENT ========================== */
+/* Uniform tracks keep every tile the same width and height regardless of
+   how much text each one carries. */
+.kpis { grid-auto-rows: 1fr; align-items: stretch; }
+.kpi { height: 100%; }
+.kpi__val { margin-top: auto; }        /* values sit on a shared baseline */
+.kpi__sub { margin-top: 8px; }
+.kpi__bar { margin-top: 14px; padding-top: 0; }
+
+/* ======================= HUBS & STOPS — POLISH ========================== */
+.hubpair {
+  background: linear-gradient(140deg, var(--card) 0%, var(--card-2) 100%);
+  padding: 18px 20px; border-radius: var(--r-md);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.hubpair__item { position: relative; padding-left: 16px; }
+/* Coloured rail marks each side of the current → next pair. */
+.hubpair__item::before {
+  content: ""; position: absolute; left: 0; top: 3px; bottom: 3px;
+  width: 3px; border-radius: 2px; background: var(--line-strong);
+}
+.hubpair__item.is-current::before { background: var(--green); }
+.hubpair__item.is-next::before { background: var(--amber); }
+.hubpair__name { font-size: 16px; letter-spacing: -.01em; }
+.hubpair__arrow {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 15px;
+  box-shadow: var(--sh-1);
+}
+
+.hubnav {
+  padding: 12px 14px; border-radius: 999px;
+  background: var(--card-2); border: 1px solid var(--line);
+}
+.hubpipe__node:hover .hubpipe__dot { transform: scale(1.15); }
+
+.hubdetail {
+  padding: 22px; border-radius: var(--r-md);
+  background: linear-gradient(158deg, #FFFDFA 0%, var(--card) 60%);
+  box-shadow: var(--sh-2);
+  border-color: var(--line-strong);
+}
+.hubdetail__hd { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.hubdetail .stop__name { font-size: 20px; letter-spacing: -.015em; }
+.hubdetail__loc { display: flex; align-items: center; gap: 6px; }
+.hubdetail .stop__meta {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px;
+}
+.hubdetail .stop__meta > div {
+  background: var(--card-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 13px 14px; text-align: left;
+}
+.hubdetail .stop__meta span {
+  display: block; font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.hubdetail .stop__meta b { font-family: var(--mono); font-size: 17px; }
+.hubdetail .deflist div { padding: 10px 0; }
+
+@media (max-width: 620px) {
+  .hubdetail .stop__meta { grid-template-columns: 1fr; }
+  .hubdetail { padding: 16px; }
+}
+
+/* ==========================================================================
+   METRICS GRID — premium 3D KPI cards for the main dashboard. Builds on the
+   shared .kpi accent/glow/tilt system (top rule, sheen sweep, pointer-follow
+   tilt from initKpiTiles(), colour-mixed glow) but tuned for a denser,
+   8-tile grid: smaller footprint, a tinted icon badge per tile for quick
+   scanning, and a slightly crisper shadow stack so tiles read as a matched
+   set rather than one-off cards.
+   ========================================================================== */
+.kpis--metrics { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpis--metrics .kpi {
+  --k-accent: var(--k-blue);
+  min-height: 152px;
+  padding: 18px 20px 20px;
+  gap: 2px;
+}
+.kpis--metrics .kpi--blue { --k-accent: var(--k-blue); }
+
+/* Tinted icon badge — top-right, glows with the tile's accent colour even
+   at rest, and lifts further on hover for a tactile, premium feel. */
+.kpi__icon {
+  position: absolute; top: 16px; right: 16px; z-index: 2;
+  width: 32px; height: 32px; border-radius: 10px;
+  display: grid; place-items: center;
+  color: var(--k-accent);
+  background: color-mix(in srgb, var(--k-accent) 14%, #fff);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .7),
+    inset 0 -1px 1px color-mix(in srgb, var(--k-accent) 18%, transparent),
+    0 1px 2px rgba(90, 68, 44, .1),
+    0 0 0 1px color-mix(in srgb, var(--k-accent) 10%, transparent),
+    0 0 14px -6px color-mix(in srgb, var(--k-accent) 55%, transparent);
+  transition: transform .32s cubic-bezier(.2, .8, .25, 1), background .32s ease, box-shadow .32s ease;
+}
+.kpi__icon svg { width: 16px; height: 16px; }
+.kpis--metrics .kpi:hover .kpi__icon,
+.kpis--metrics .kpi.is-lit .kpi__icon {
+  transform: scale(1.1) rotate(-4deg) translateZ(18px);
+  background: var(--k-accent); color: #fff;
+  box-shadow:
+    0 4px 12px -3px color-mix(in srgb, var(--k-accent) 65%, transparent),
+    0 0 22px -2px color-mix(in srgb, var(--k-accent) 70%, transparent);
+}
+.kpis--metrics .kpi__label { min-height: 0; font-size: 10.5px; padding-right: 40px; }
+.kpis--metrics .kpi__val { font-size: 26px; margin-top: 8px; font-weight: 600; }
+.kpis--metrics .kpi__val small { font-size: 15px; }
+.kpis--metrics .kpi__sub { font-size: 11.5px; min-height: 0; margin-top: 5px; }
+
+/* Consistent, graduated column counts — no overlapping breakpoints, and no
+   tier that leaves an orphaned gap in the last row: 8 tiles divide evenly
+   into 4, 2 or 1 columns, so 3-across (which stranded 2 cards alone in the
+   final row on tablet widths) has been dropped in favour of 2-across. */
+@media (min-width: 1440px) { .kpis--metrics { grid-template-columns: repeat(4, 1fr); gap: 18px; } }
+@media (max-width: 1439px) and (min-width: 1101px) { .kpis--metrics { grid-template-columns: repeat(4, 1fr); gap: 16px; } }
+@media (max-width: 1100px) and (min-width: 641px) { .kpis--metrics { grid-template-columns: repeat(2, 1fr); gap: 16px; } }
+@media (max-width: 640px) and (min-width: 481px) {
+  .kpis--metrics { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .kpis--metrics .kpi { min-height: 140px; padding: 16px 16px 18px; }
+  .kpis--metrics .kpi__val { font-size: 24px; }
+}
+@media (max-width: 480px) {
+  .kpis--metrics { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpis--metrics .kpi { min-height: 128px; padding: 14px 14px 16px; }
+  .kpis--metrics .kpi__label { font-size: 10px; padding-right: 34px; }
+  .kpis--metrics .kpi__val { font-size: 21px; margin-top: 6px; }
+  .kpis--metrics .kpi__sub { font-size: 11px; }
+  .kpi__icon { width: 28px; height: 28px; top: 12px; right: 12px; border-radius: 9px; }
+  .kpi__icon svg { width: 14px; height: 14px; }
+}
+@media (max-width: 340px) { .kpis--metrics { grid-template-columns: 1fr; } }
+
+/* Trip-attended header avatar reuses the driver-score ring styling. */
+#btnTripAttended .avatar--score b { color: var(--k-blue); font-size: 11px; }
+
+/* ==========================================================================
+   TYRE CHECK — 3D vehicle illustration with per-tyre popup entry
+   ========================================================================== */
+.tyre3d-wrap { margin-bottom: 22px; }
+.tyre3d-hint { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+.tyre3d {
+  position: relative;
+  width: 220px;
+  max-width: 100%;
+  height: 300px;
+  margin: 0 auto;
+  touch-action: manipulation;
+}
+.tyre3d__truck { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 10px 18px rgba(15,39,72,.1)); }
+
+.tyre3d__tyre {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: 0; cursor: pointer;
+  width: 74px;
+  transform: translateY(0);
+  transition: transform .2s cubic-bezier(.2,.8,.25,1);
+}
+.tyre3d__tyre:hover, .tyre3d__tyre:focus-visible { transform: translateY(-3px); outline: none; }
+.tyre3d__ring {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-content: center;
+  background: #1B2434; color: #8FA0C2;
+  border: 3px solid #2B3750;
+  box-shadow: 0 4px 10px -3px rgba(15,39,72,.4);
+  transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+.tyre3d__ring svg { width: 24px; height: 24px; }
+.tyre3d__pos { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--faint); margin-top: 1px; }
+.tyre3d__badge {
+  font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--card-2); border: 1px solid var(--line); color: var(--faint);
+  white-space: nowrap;
+}
+.tyre3d__tyre.is-set .tyre3d__ring { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+.tyre3d__tyre.is-set .tyre3d__badge { background: var(--green-soft); border-color: rgba(15,157,88,.3); color: var(--green); }
+.tyre3d__tyre.is-monitor .tyre3d__ring { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
+.tyre3d__tyre.is-monitor .tyre3d__badge { background: var(--amber-soft); border-color: rgba(199,119,0,.3); color: var(--amber); }
+.tyre3d__tyre.is-defect .tyre3d__ring { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.tyre3d__tyre.is-defect .tyre3d__badge { background: var(--red-soft); border-color: rgba(211,53,43,.3); color: var(--red); }
+
+.tyre3d-summary { text-align: center; font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+.tyre3d-wrap.is-bad .tyre3d-summary { color: var(--red); font-weight: 700; }
+.tyre3d-wrap.is-bad .tyre3d,
+.tyre3d-wrap.is-bad .veh3d__scene { outline: 2px dashed rgba(211,53,43,.4); outline-offset: 10px; border-radius: 16px; }
+
+/* ==========================================================================
+   3D VEHICLE VIEWER — real interactive WebGL truck (Three.js). Drag/touch
+   rotates the model freely; tapping a wheel opens the tyre pressure popup.
+   Falls back to a flat, keyboard-accessible tyre grid if WebGL is missing.
+   ========================================================================== */
+.veh3d { margin: 0 auto; max-width: 460px; }
+.veh3d__toolbar { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 14px; }
+.veh3d__navbtn {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card); border: 1px solid var(--line-strong); box-shadow: var(--sh-1);
+  color: var(--muted); transition: background .16s, color .16s, transform .16s, border-color .16s;
+}
+.veh3d__navbtn:hover { background: var(--blue); color: #fff; border-color: var(--blue); transform: scale(1.07); }
+.veh3d__navbtn:active { transform: scale(.95); }
+.veh3d__sidepill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 15px; border-radius: 999px;
+  background: var(--card-2); border: 1px solid var(--line); font-size: 12px; font-weight: 700;
+  color: var(--text); min-width: 100px; justify-content: center;
+}
+.veh3d__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); transition: background .2s; }
+.veh3d.is-right .veh3d__dot { background: var(--k-teal); }
+
+.veh3d__scene {
+  position: relative; width: 100%; aspect-ratio: 1024 / 678;
+  cursor: grab; touch-action: none; user-select: none;
+}
+.veh3d.is-dragging .veh3d__scene { cursor: grabbing; }
+.veh3d__canvas {
+  display: block; width: 100%; height: 100%;
+  filter: drop-shadow(0 18px 20px rgba(15, 39, 72, .16));
+  touch-action: none;
+}
+.veh3d__shadow {
+  width: 66%; height: 16px; margin: -6px auto 0; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(15, 39, 72, .18) 0%, rgba(15, 39, 72, 0) 72%);
+}
+
+/* Fallback: flat tyre grid shown when WebGL / Three.js isn't available */
+.veh3d__fallback {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+}
+.veh3d__fallback-note { font-size: 12.5px; color: var(--muted); text-align: center; margin: 0; }
+.veh3d__fallback-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px;
+}
+.veh3d__fallback-grid .tyre3d__tyre { position: static; }
+
+.veh3d__scene .tyre3d__tyre { width: 62px; }
+.veh3d__scene .tyre3d__ring { width: 38px; height: 38px; }
+.veh3d__scene .tyre3d__ring svg { width: 19px; height: 19px; }
+.veh3d__scene .tyre3d__pos { font-size: 9px; }
+.veh3d__scene .tyre3d__badge { font-size: 10.5px; padding: 2px 7px; }
+.veh3d__draghint { text-align: center; font-size: 11.5px; color: var(--faint); margin-top: 10px; }
+
+@media (max-width: 480px) {
+  .veh3d { max-width: 320px; }
+  .veh3d__scene .tyre3d__tyre { width: 52px; }
+  .veh3d__scene .tyre3d__ring { width: 32px; height: 32px; }
+  .veh3d__scene .tyre3d__ring svg { width: 16px; height: 16px; }
+}
+
+/* popup */
+.tyrepop {
+  position: fixed; z-index: 120; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(340px, calc(100vw - 32px));
+  background: var(--card); border-radius: var(--r-lg);
+  box-shadow: var(--sh-3); border: 1px solid var(--line);
+  padding: 18px 20px 20px;
+  animation: tyrePopIn .22s cubic-bezier(.2,.8,.25,1);
+}
+@keyframes tyrePopIn { from { opacity: 0; transform: translate(-50%,-46%) scale(.96); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+.tyrepop__hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.tyrepop__hd h3 { font-size: 16px; font-weight: 700; }
+
+/* ======================== DOCUMENT VIEWER POPUP =========================
+   Opened from the Documents section — previews the driver's own file
+   in-page and offers a direct Download action, instead of navigating away
+   to a new tab. */
+.docviewer {
+  position: fixed; z-index: 120; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(86vh, 760px);
+  display: flex; flex-direction: column;
+  background: var(--card); border-radius: var(--r-lg);
+  box-shadow: var(--sh-3); border: 1px solid var(--line);
+  padding: 18px 20px 20px;
+  animation: tyrePopIn .22s cubic-bezier(.2,.8,.25,1);
+}
+.docviewer__hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex: none; }
+.docviewer__hd h3 { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docviewer__body {
+  position: relative; flex: 1; min-height: 320px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: var(--r-md);
+  overflow: hidden;
+}
+.docviewer__frame { display: block; width: 100%; height: 100%; min-height: 320px; border: 0; background: #fff; }
+.docviewer__loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--muted); pointer-events: none;
+}
+.docviewer__ft { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex: none; }
+.docviewer__ft .btn--primary { display: inline-flex; align-items: center; gap: 8px; }
+@media (max-width: 560px) {
+  .docviewer { width: calc(100vw - 24px); padding: 16px; }
+  .docviewer__body { min-height: 260px; }
+  .docviewer__ft { flex-direction: column-reverse; }
+  .docviewer__ft .btn { width: 100%; justify-content: center; }
+}
+
+
+@media (max-width: 480px) {
+  .tyre3d { width: 190px; height: 262px; }
+  .tyre3d__ring { width: 40px; height: 40px; }
+  .tyre3d__ring svg { width: 20px; height: 20px; }
+}
