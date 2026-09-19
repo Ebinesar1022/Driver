@@ -34,6 +34,68 @@
   }
 }
 
+@keyframes loaderPinPulse {
+
+  0%,
+  to {
+    transform: scale(1);
+    opacity: 1
+  }
+
+  50% {
+    transform: scale(1.25);
+    opacity: .6
+  }
+}
+
+@keyframes loaderPinGlow {
+
+  0%,
+  to {
+    box-shadow: 0 0 0 0 rgba(77, 163, 255, .55)
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(77, 163, 255, 0)
+  }
+}
+
+@keyframes loaderTrackFlow {
+  0% {
+    stroke-dashoffset: 0
+  }
+
+  to {
+    stroke-dashoffset: -460
+  }
+}
+
+@keyframes loaderDomeGlow {
+
+  0%,
+  to {
+    opacity: .55;
+    transform: scale(1)
+  }
+
+  50% {
+    opacity: .85;
+    transform: scale(1.03)
+  }
+}
+
+@keyframes loaderTruckFloat {
+
+  0%,
+  to {
+    transform: translateY(0)
+  }
+
+  50% {
+    transform: translateY(-5px)
+  }
+}
+
 @keyframes fade {
   0% {
     opacity: 0;
@@ -196,7 +258,13 @@
 
 body,
 html {
-  height: 100%
+  height: 100%;
+  /* iOS Safari auto-boosts font sizes on orientation change / long
+     pages unless this is set, which throws off this layout's careful
+     spacing on iPhone specifically — Android/desktop ignore this
+     property harmlessly. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%
 }
 
 body {
@@ -240,8 +308,8 @@ ul {
   z-index: 999;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  background: linear-gradient(160deg, var(--navy), var(--navy-2));
+  gap: 22px;
+  background: radial-gradient(circle at 50% 38%, #163467, var(--navy) 62%, #071229 100%);
   opacity: 1;
   transition: opacity .42s ease, visibility .42s ease
 }
@@ -254,75 +322,106 @@ ul {
 
 .page-loader__scene {
   position: relative;
-  width: 220px;
-  height: 90px;
-  align-items: flex-end
+  width: min(92vw, 440px);
+  height: 220px;
+  align-items: center;
+  justify-content: center
 }
 
-.page-loader__truck {
-  width: 130px;
-  height: auto;
-  animation: loaderBounce .6s ease-in-out infinite
-}
-
-.page-loader__wheel {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: loaderWheelSpin .5s linear infinite
-}
-
-.page-loader__road {
+.page-loader__dome {
   position: absolute;
-  bottom: 4px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  overflow: hidden
+  top: 6px;
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(90, 160, 255, .22), rgba(90, 160, 255, 0) 70%);
+  border: 1px solid rgba(120, 175, 255, .18);
+  animation: loaderDomeGlow 3.2s ease-in-out infinite
 }
 
-.page-loader__road span {
+.page-loader__track {
   position: absolute;
-  top: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible
+}
+
+.page-loader__track-flow {
+  animation: loaderTrackFlow 2.6s linear infinite;
+  filter: drop-shadow(0 0 5px rgba(77, 163, 255, .9))
+}
+
+.page-loader__pin {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #4da3ff;
+  animation: loaderPinPulse 1.8s ease-in-out infinite
+}
+
+.page-loader__pin svg {
   width: 22px;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, .35);
-  animation: loaderRoadMove .7s linear infinite
+  height: 22px;
+  filter: drop-shadow(0 0 6px rgba(77, 163, 255, .8))
 }
 
-.page-loader__road span:nth-child(1) {
-  left: 0;
+.page-loader__pin i {
+  width: 6px;
+  height: 6px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: #4da3ff;
+  animation: loaderPinGlow 1.8s ease-in-out infinite
+}
+
+.page-loader__pin--left {
+  left: 10%;
+  top: 34%;
   animation-delay: 0s
 }
 
-.page-loader__road span:nth-child(2) {
-  left: 62px;
-  animation-delay: .15s
+.page-loader__pin--left i {
+  animation-delay: 0s
 }
 
-.page-loader__road span:nth-child(3) {
-  left: 124px;
-  animation-delay: .3s
+.page-loader__pin--right {
+  right: 10%;
+  top: 14%;
+  animation-delay: .9s
 }
 
-.page-loader__road span:nth-child(4) {
-  left: 186px;
-  animation-delay: .45s
+.page-loader__pin--right i {
+  animation-delay: .9s
+}
+
+.page-loader__truck {
+  position: relative;
+  display: block;
+  width: 210px;
+  height: auto;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .45)) drop-shadow(0 0 16px rgba(120, 175, 255, .35));
+  animation: loaderBounce .6s ease-in-out infinite, loaderTruckFloat 3.2s ease-in-out infinite
 }
 
 .page-loader__txt {
-  color: rgba(255, 255, 255, .78);
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  text-transform: uppercase
+  color: rgba(255, 255, 255, .82);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: .01em
+}
+
+.page-loader__txt b {
+  color: #4da3ff;
+  font-weight: 700
 }
 
 .page-loader__progress {
-  width: 220px;
-  height: 6px;
+  width: min(86vw, 420px);
+  height: 9px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .12);
   overflow: hidden
 }
 
@@ -330,17 +429,27 @@ ul {
   height: 100%;
   width: 0%;
   border-radius: 99px;
-  background: linear-gradient(90deg, #4c8dff, #14b36b);
+  background: linear-gradient(90deg, #38bdf8, #1e6fe8);
+  box-shadow: 0 0 10px rgba(56, 189, 248, .55);
   transition: width .35s cubic-bezier(.2, .8, .3, 1)
 }
 
 .page-loader__pct {
-  color: rgba(255, 255, 255, .55);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, .6);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: .04em;
-  margin-top: -6px
+  letter-spacing: .04em
+}
+
+.page-loader__pct span {
+  display: block;
+  width: 26px;
+  height: 1px;
+  background: rgba(255, 255, 255, .3)
 }
 
 button {
@@ -385,7 +494,13 @@ select {
 .shell {
   max-width: 1600px;
   margin: 0 auto;
-  padding: 0 24px 32px
+  padding: 0 24px 32px;
+  /* Keep content clear of the iPhone home-indicator bar and, in
+     landscape on notched models, the left/right safe areas. Falls
+     back to the existing 24px/32px everywhere env() isn't supported. */
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(32px, env(safe-area-inset-bottom))
 }
 
 .view {
@@ -405,6 +520,14 @@ select {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 24px;
+  /* On notched/Dynamic-Island iPhones in landscape (viewport-fit=cover
+     is set in widget.html), the safe area insets are non-zero on the
+     sides — without this, the header's left/right edges sit under the
+     sensor housing / rounded corners. env() resolves to 0 everywhere
+     else, so this is a no-op on Android/desktop/portrait iPhone. */
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-top: max(14px, env(safe-area-inset-top));
   background: rgba(255, 255, 255, .85);
   backdrop-filter: saturate(180%) blur(14px);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
@@ -667,6 +790,7 @@ select {
   inset: 0;
   z-index: 60;
   background: rgba(15, 39, 72, .34);
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   animation: fade .2s ease both
 }
@@ -1230,7 +1354,8 @@ select {
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px
+  gap: 16px;
+  align-items: start
 }
 
 .grid-2 {
@@ -1441,7 +1566,9 @@ select {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 24px;
+  /* Clear the iPhone home-indicator bar (and Android's gesture bar) so
+     this floating alert never sits underneath it. */
+  bottom: max(24px, calc(env(safe-area-inset-bottom) + 12px));
   z-index: 70;
   display: flex;
   gap: 13px;
@@ -1528,6 +1655,18 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 12px
+}
+
+/* Added: small info icon next to the "Trip ID" label on the Assigned
+   Trip page. Purely additive — does not change any existing rule. */
+.trip-hero__info-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -2px;
+  margin-left: 4px;
+  color: rgba(255, 255, 255, .62);
+  cursor: help
 }
 
 .trip-hero__pill {
@@ -1736,7 +1875,38 @@ select {
   padding: 14px 30px;
   border-radius: 16px;
   background: linear-gradient(140deg, var(--navy), var(--navy-2));
-  min-width: 190px
+  min-width: 190px;
+  cursor: pointer
+}
+
+.triptimer-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto
+}
+
+/* Added: small round button beside the trip timer that opens the trip
+   summary popup (Trip status / Stops completed / Driving time / Distance
+   left). Purely additive. */
+.triptimer__infobtn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #8bea6a, #33b81f 70%);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(51, 184, 31, .4);
+  cursor: pointer;
+  align-self: center
+}
+
+.triptimer__infobtn:hover {
+  filter: brightness(1.06)
 }
 
 .triptimer__label {
@@ -1862,11 +2032,57 @@ select {
 }
 
 .formcard {
-  max-width: 620px
+  max-width: 900px
 }
 
 .formcard--wide {
-  max-width: 760px
+  max-width: 1000px
+}
+
+.formcard.checkcard {
+  max-width: 1080px
+}
+
+/* Forms were capped at a narrow fixed width regardless of the available
+   screen width, leaving large empty space to the right on tablets/laptops.
+   From 700px up, lay each form's direct fields out in two columns so the
+   extra width is actually used and forms are shorter/more compact.
+   Elements that need the full row (errors, button rows, the hub/date
+   chip, the tyre 3D widget, and anything explicitly marked .span-2)
+   still stretch across both columns. Below 700px everything stays a
+   single column exactly as before. */
+@media (min-width:700px) {
+
+  .formcard .card__bd {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+    row-gap: 2px;
+    align-items: start
+  }
+
+  .formcard .card__bd>.field,
+  .formcard .card__bd>.field-grid>.field {
+    margin-bottom: 18px
+  }
+
+  .formcard .card__bd>.field-grid {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+    row-gap: 0
+  }
+
+  .formcard .card__bd>.formerr,
+  .formcard .card__bd>.btnrow,
+  .formcard .card__bd>.chip,
+  .formcard .card__bd>.tyre3d-wrap,
+  .formcard .card__bd>.field.span-2,
+  .field-grid>.field.span-2,
+  .field-grid>.field--action {
+    grid-column: 1 / -1
+  }
 }
 
 .field-grid {
@@ -1932,12 +2148,37 @@ select {
   transition: border-color .15s, box-shadow .15s, background .15s
 }
 
+.field select {
+  /* iOS Safari renders <select> with its own heavy native chrome by
+     default, which doesn't match this design system's inputs the way
+     Android Chrome's does — that mismatch is what reads as "misaligned"
+     on iPhone. Reset to the plain box above and draw one consistent
+     arrow everywhere instead. */
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 36px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 20px) calc(50% - 3px), calc(100% - 14px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat
+}
+
 .field input:focus,
 .field select:focus {
   background: #fff;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(30, 111, 232, .14);
   outline: 0
+}
+
+.field input:disabled,
+.field select:disabled {
+  background: var(--card-2);
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+  opacity: .85
 }
 
 .field small {
@@ -1958,6 +2199,31 @@ select {
   color: #10457f;
   font-size: 12.5px;
   margin-bottom: 18px
+}
+
+.pagehead .chip {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: #10457f;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -.01em
+}
+
+.pod-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  color: #10457f;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px
 }
 
 .formerr {
@@ -2529,7 +2795,7 @@ select {
 
 .tqa {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 26px
 }
@@ -2540,11 +2806,11 @@ select {
   position: relative;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 18px 10px 16px;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 18px 18px 16px;
   min-height: 100px;
   border-radius: 16px;
   border: 1px solid var(--line);
@@ -2553,7 +2819,7 @@ select {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--text);
-  text-align: center;
+  text-align: left;
   transition: transform .18s cubic-bezier(.2, .8, .3, 1), box-shadow .18s, border-color .18s
 }
 
@@ -2584,24 +2850,105 @@ select {
   transform: translateY(-1px) scale(.97)
 }
 
+/* decorative animated squiggle line, echoes the reference design */
+.tqa__wave {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  height: 26px;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 0;
+}
+
+.tqa__wave path {
+  fill: none;
+  stroke: var(--tqa-c);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: .35;
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  animation: tqaWaveDraw 1.1s cubic-bezier(.2, .8, .25, 1) forwards, tqaWaveFloat 3.6s ease-in-out .9s infinite;
+  animation-delay: calc(var(--tqa-delay, 0s)), calc(var(--tqa-delay, 0s) + 1.1s);
+}
+
+.tqa__card:hover .tqa__wave path {
+  opacity: .65
+}
+
+@keyframes tqaWaveDraw {
+  to {
+    stroke-dashoffset: 0
+  }
+}
+
+@keyframes tqaWaveFloat {
+
+  0%,
+  100% {
+    transform: translateY(0)
+  }
+
+  50% {
+    transform: translateY(-2px)
+  }
+}
+
 .tqa__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--tqa-soft);
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--tqa-c) 22%, transparent) 0%, var(--tqa-soft) 70%);
   color: var(--tqa-c);
-  transition: transform .18s, background .18s, color .18s
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tqa-c) 30%, transparent), 0 0 0 4px color-mix(in srgb, var(--tqa-c) 8%, transparent);
+  transition: transform .18s, background .18s, color .18s, box-shadow .3s;
+  animation: tqaIconPulse 2.8s ease-in-out infinite;
+  animation-delay: var(--tqa-delay, 0s);
+}
+
+.tqa__icon svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--tqa-c) 55%, transparent));
+}
+
+@keyframes tqaIconPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tqa-c) 30%, transparent), 0 0 0 4px color-mix(in srgb, var(--tqa-c) 8%, transparent)
+  }
+
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tqa-c) 45%, transparent), 0 0 0 7px color-mix(in srgb, var(--tqa-c) 14%, transparent)
+  }
 }
 
 .tqa__card:hover .tqa__icon {
   background: var(--tqa-c);
-  color: #fff
+  color: #fff;
+  transform: scale(1.06)
+}
+
+.tqa__body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .tqa__label {
-  letter-spacing: -.01em
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .tqa__card--blue {
@@ -2634,23 +2981,28 @@ select {
 }
 
 .tqa__card:nth-child(1) {
-  animation-delay: .02s
+  animation-delay: .02s;
+  --tqa-delay: .35s
 }
 
 .tqa__card:nth-child(2) {
-  animation-delay: .06s
+  animation-delay: .06s;
+  --tqa-delay: .55s
 }
 
 .tqa__card:nth-child(3) {
-  animation-delay: .1s
+  animation-delay: .1s;
+  --tqa-delay: .75s
 }
 
 .tqa__card:nth-child(4) {
-  animation-delay: .14s
+  animation-delay: .14s;
+  --tqa-delay: .95s
 }
 
 .tqa__card:nth-child(5) {
-  animation-delay: .18s
+  animation-delay: .18s;
+  --tqa-delay: 1.15s
 }
 
 @media (max-width:1024px) {
@@ -2712,6 +3064,16 @@ select {
   color: var(--faint)
 }
 
+.alert-empty {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center
+}
+
 .tl,
 .tl li {
   position: relative
@@ -2761,6 +3123,45 @@ select {
 .tl__x {
   font-size: 13.5px;
   font-weight: 500
+}
+
+.booking-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none
+}
+
+.booking-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line)
+}
+
+.booking-item--empty {
+  color: var(--muted);
+  font-size: 13px
+}
+
+.booking-item__check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  width: 100%;
+  cursor: pointer
+}
+
+.booking-item__check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue)
 }
 
 .pod-items {
@@ -2822,7 +3223,22 @@ select {
   border: 1px solid var(--line-strong);
   background: #fff;
   font-family: var(--mono);
-  font-size: 14px
+  /* iOS Safari auto-zooms the whole page on focus for any input with a
+     computed font-size under 16px — this is an iPhone-only bug (Android
+     Chrome and desktop are unaffected). 14px triggered it every time a
+     driver tapped a POD quantity field. */
+  font-size: 16px
+}
+
+.pod-item__qty-val {
+  min-width: 32px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 6px 4px;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600
 }
 
 .pod-status {
@@ -3409,6 +3825,7 @@ textarea {
   list-style: none;
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, .82);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px)
 }
 
@@ -3694,36 +4111,36 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
-  padding: 16px 18px 18px;
-  margin-bottom: 24px
+  padding: 10px 12px 12px;
+  margin-bottom: 16px
 }
 
 .checkprogress--top .checkprogress__hd {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px
+  gap: 8px;
+  margin-bottom: 6px
 }
 
 .checkprogress--top .checkprogress__lbl {
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text)
 }
 
 .checkprogress--top .checkprogress__pct {
-  font-size: 12.5px;
+  font-size: 11px;
   color: var(--muted)
 }
 
 .checkprogress--top .checkprogress__bar {
-  height: 10px;
-  margin-bottom: 10px
+  height: 6px;
+  margin-bottom: 6px
 }
 
 .checkprogress--top .checkprogress__foot {
-  font-size: 12px;
+  font-size: 10.5px;
   color: var(--muted)
 }
 
@@ -4146,6 +4563,31 @@ textarea {
 .triprow__view.is-start:hover {
   background: #0c8a4c;
   box-shadow: var(--sh-1)
+}
+
+.triprow__tag {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 3px
+}
+
+.triprow__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none
+}
+
+.triprow--compact .triprow__locations {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 4px
 }
 
 #dashTodayTripList .triprow,
@@ -4742,7 +5184,7 @@ textarea {
 }
 
 .qa--checks {
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin-bottom: 20px
 }
 
@@ -5514,6 +5956,125 @@ textarea {
   animation: tyrePopIn .22s cubic-bezier(.2, .8, .25, 1)
 }
 
+.tripinfopop {
+  width: min(620px, calc(100vw - 32px))
+}
+
+.tripinfopop {
+  width: min(620px, calc(100vw - 32px));
+  border-radius: 20px;
+  box-shadow: 0 24px 60px -12px rgba(15, 39, 72, .35), 0 4px 14px rgba(15, 39, 72, .12);
+  animation: tripInfoPopIn .32s cubic-bezier(.2, .9, .25, 1.1);
+  max-height: min(85vh, 640px);
+  overflow-y: auto
+}
+
+#tripInfoScrim {
+  animation: tripInfoScrimIn .22s ease-out
+}
+
+@keyframes tripInfoScrimIn {
+  from {
+    opacity: 0
+  }
+
+  to {
+    opacity: 1
+  }
+}
+
+@keyframes tripInfoPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(.96)
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1)
+  }
+}
+
+.tripinfopop .docviewer__hd {
+  background: linear-gradient(135deg, var(--navy), var(--navy-2));
+  border-radius: 20px 20px 0 0;
+  padding: 18px 20px;
+  margin: -1px -1px 18px
+}
+
+.tripinfopop .docviewer__hd h3 {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: .01em
+}
+
+.tripinfopop .docviewer__hd .xbtn {
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  border: none;
+  transition: background .15s ease, transform .15s ease
+}
+
+.tripinfopop .docviewer__hd .xbtn:hover {
+  background: rgba(255, 255, 255, .28);
+  transform: rotate(90deg)
+}
+
+.tripinfopop .kpis {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 20px 20px
+}
+
+.tripinfopop .kpi {
+  min-height: 108px;
+  border-radius: 14px;
+  transition: transform .18s ease, box-shadow .18s ease;
+  animation: tripInfoCardIn .38s both;
+  animation-delay: calc(var(--kpi-i, 0) * 45ms)
+}
+
+.tripinfopop .kpi:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px -8px rgba(15, 39, 72, .28)
+}
+
+@keyframes tripInfoCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px)
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0)
+  }
+}
+
+@media (max-width: 560px) {
+  .tripinfopop .kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 14px 16px
+  }
+
+  .tripinfopop .kpi {
+    min-height: 92px;
+    padding: 12px
+  }
+
+  .tripinfopop .docviewer__hd {
+    padding: 14px 16px
+  }
+}
+
+@media (max-width: 380px) {
+  .tripinfopop .kpis {
+    grid-template-columns: 1fr
+  }
+}
+
 .docviewer__hd {
   display: flex;
   align-items: center;
@@ -5672,4 +6233,1708 @@ textarea {
 .leaflet-popup-content {
   font-family: inherit;
   font-size: 13px
+}
+
+/* ==========================================================================
+   REFERENCE-IMAGE MATCH — Main dashboard + Vehicle check-in
+   Added to match the uploaded reference screenshots as closely as possible
+   without altering any pre-existing selectors above.
+   ========================================================================== */
+
+/* ---- "1 TRIP" style pill badge (Today's trip card header) ---- */
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 5px 13px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase
+}
+
+/* ---- Trip attendance stat rows with icon badges ---- */
+.attsum__nums {
+  display: flex;
+  flex-direction: column;
+  gap: 14px
+}
+
+.attsum__nums>div {
+  align-items: center;
+  gap: 12px
+}
+
+.attsum__nums>div>span {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text)
+}
+
+.attsum__nums b {
+  font-size: 17px;
+  font-weight: 700
+}
+
+.stat-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  color: #fff
+}
+
+.stat-ic--green {
+  background: var(--green)
+}
+
+.stat-ic--red {
+  background: var(--red)
+}
+
+.stat-ic--violet {
+  background: var(--k-violet)
+}
+
+/* ---- Documents / Contact control large tiles ---- */
+.tile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px
+}
+
+.tile-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .18s cubic-bezier(.2, .8, .3, 1), box-shadow .18s
+}
+
+.tile-card::after {
+  content: "";
+  position: absolute;
+  right: -30px;
+  bottom: -34px;
+  width: 110px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(30, 111, 232, .1), rgba(30, 111, 232, 0) 70%);
+  pointer-events: none
+}
+
+.tile-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-3)
+}
+
+.tile-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  color: #fff
+}
+
+.tile-card__icon--blue {
+  background: linear-gradient(140deg, var(--blue), #1354be)
+}
+
+.tile-card__icon--violet {
+  background: linear-gradient(140deg, #8a4bf0, var(--k-violet))
+}
+
+.tile-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px
+}
+
+.tile-card__body b {
+  font-size: 14.5px;
+  font-weight: 700
+}
+
+.tile-card__body span {
+  font-size: 12.5px;
+  color: var(--muted)
+}
+
+.tile-card__chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  color: var(--muted)
+}
+
+.tile-card__chev svg {
+  transform: rotate(180deg)
+}
+
+@media (max-width:760px) {
+  .tile-actions {
+    grid-template-columns: 1fr
+  }
+}
+
+/* ---- "Today's trip" highlighted card ---- */
+.trip-highlight {
+  display: block;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--blue-soft), #f2f7ff);
+  border: 1px solid rgba(30, 111, 232, .18);
+  border-left: 4px solid var(--blue)
+}
+
+.trip-highlight:hover {
+  transform: none;
+  box-shadow: none
+}
+
+.trip-highlight__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px
+}
+
+.trip-highlight__tag {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(30, 111, 232, .12);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase
+}
+
+.trip-highlight__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap
+}
+
+.trip-highlight__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s
+}
+
+.trip-highlight__btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-1)
+}
+
+.trip-highlight__btn.is-start {
+  background: linear-gradient(140deg, #14b36b, #0b7c45);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(15, 157, 88, .3)
+}
+
+.trip-highlight__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px
+}
+
+.trip-highlight__info {
+  min-width: 0
+}
+
+.trip-highlight__id {
+  display: block;
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700
+}
+
+.trip-highlight__locations {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-top: 5px;
+  color: var(--text)
+}
+
+.trip-highlight__locations svg {
+  color: var(--blue);
+  flex: none
+}
+
+.trip-highlight__date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px
+}
+
+.trip-highlight__date svg {
+  color: var(--faint);
+  flex: none
+}
+
+.trip-highlight__art {
+  flex: none;
+  width: 130px;
+  height: 74px;
+  display: none
+}
+
+@media (min-width:620px) {
+  .trip-highlight__art {
+    display: block
+  }
+}
+
+/* ---- Vehicle check-in: back button blue variant ---- */
+.backlink--blue {
+  background: linear-gradient(150deg, #3a8cf5 0, #1e6fe8 55%, #1354be 100%);
+  box-shadow: 0 1px 2px rgba(9, 47, 97, .2), 0 8px 20px -10px rgba(30, 111, 232, .7), inset 0 1px 0 rgba(255, 255, 255, .28)
+}
+
+.backlink--blue:hover {
+  box-shadow: 0 2px 4px rgba(9, 47, 97, .22), 0 14px 28px -10px rgba(30, 111, 232, .82), 0 0 24px -6px rgba(30, 111, 232, .55), inset 0 1px 0 rgba(255, 255, 255, .32)
+}
+
+/* ---- Vehicle check-in: pagehead with icon + illustration ---- */
+.pagehead--vcheck {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  overflow: hidden;
+  padding-bottom: 4px
+}
+
+.pagehead__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  position: relative;
+  z-index: 1
+}
+
+.pagehead__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, var(--blue), #1354be);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(30, 111, 232, .28)
+}
+
+.pagehead--vcheck h1 {
+  margin-top: 0
+}
+
+.pagehead__art {
+  flex: none;
+  width: 240px;
+  height: auto;
+  max-height: 130px;
+  object-fit: contain;
+  display: none
+}
+
+@media (min-width:860px) {
+  .pagehead__art {
+    display: block
+  }
+}
+
+/* ---- Vehicle check-in: progress card with icon ---- */
+.checkprogress--top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px
+}
+
+.checkprogress__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--blue), #1354be);
+  color: #fff
+}
+
+.checkprogress__icon svg {
+  width: 14px;
+  height: 14px
+}
+
+.checkprogress__main {
+  flex: 1;
+  min-width: 0
+}
+
+/* ---- Vehicle check-in: individual check cards ---- */
+.qa--checks {
+  grid-template-columns: repeat(5, 1fr)
+}
+
+.qa__card,
+.qa--checks button.qa__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  min-height: auto;
+  text-align: left;
+  position: relative;
+  overflow: hidden
+}
+
+.qa__card::after {
+  content: "";
+  position: absolute;
+  left: -24px;
+  bottom: -28px;
+  width: 90px;
+  height: 70px;
+  border-radius: 50%;
+  opacity: .5;
+  pointer-events: none
+}
+
+.qa__card:hover {
+  transform: translateY(-3px)
+}
+
+.qa__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%
+}
+
+.qa__top i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex: none
+}
+
+.qa__chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  flex: none
+}
+
+.qa__card .qa__label {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text)
+}
+
+.qa__card .qa__state {
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase
+}
+
+.qa__card--blue .qa__top i {
+  background: var(--blue-soft);
+  color: var(--blue)
+}
+
+.qa__card--blue::after {
+  background: var(--blue-soft)
+}
+
+.qa__card--green .qa__top i {
+  background: var(--green-soft);
+  color: var(--green)
+}
+
+.qa__card--green::after {
+  background: var(--green-soft)
+}
+
+.qa__card--violet .qa__top i {
+  background: #f1e9fd;
+  color: var(--k-violet)
+}
+
+.qa__card--violet::after {
+  background: #f1e9fd
+}
+
+.qa__card--amber .qa__top i {
+  background: var(--amber-soft);
+  color: var(--amber)
+}
+
+.qa__card--amber::after {
+  background: var(--amber-soft)
+}
+
+.qa__card--red .qa__top i {
+  background: var(--red-soft);
+  color: var(--red)
+}
+
+.qa__card--red::after {
+  background: var(--red-soft)
+}
+
+.qa__card.is-verified .qa__state {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: rgba(15, 157, 88, .3)
+}
+
+.qa__card.is-defect .qa__state {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: rgba(211, 53, 43, .3)
+}
+
+.qa__card.is-monitor .qa__state {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: rgba(199, 119, 0, .3)
+}
+
+@media (max-width:960px) {
+  .qa--checks {
+    grid-template-columns: repeat(3, 1fr)
+  }
+}
+
+@media (max-width:620px) {
+  .qa--checks {
+    grid-template-columns: repeat(2, 1fr)
+  }
+}
+
+/* ---- Vehicle check-in: full-width "Start Trip" CTA bar ---- */
+.btn--go-cta {
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-radius: var(--r-md);
+  background: linear-gradient(120deg, var(--blue), #1354be)
+}
+
+.btn--go-cta__chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .2);
+  flex: none
+}
+
+.btn--go-cta__chev svg {
+  transform: rotate(180deg)
+}
+
+
+/* ==========================================================================
+   Dispatch & POD — per-booking item table
+   ========================================================================== */
+.podbk-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px
+}
+
+.podbk-row {
+  display: grid;
+  grid-template-columns: 1.8fr .8fr 1fr .8fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line)
+}
+
+.podbk-row--head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid var(--line)
+}
+
+.podbk-row input,
+.podbk-row select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  /* Same iOS auto-zoom-on-focus fix as .pod-item__qty input above — any
+     focusable field under 16px triggers it on iPhone specifically. */
+  font-size: 16px
+}
+
+.podbk-row select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 28px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat
+}
+
+.podbk-row--empty {
+  padding: 18px 4px;
+  color: var(--faint);
+  text-align: center
+}
+
+@media (max-width: 720px) {
+  .podbk-row {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: auto;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 6px
+  }
+
+  .podbk-row--head {
+    display: none
+  }
+
+  .podbk-row>span:first-child,
+  .podbk-row>input:first-child {
+    grid-column: 1 / -1;
+    font-weight: 600
+  }
+}
+
+/* ==========================================================================
+   Expense Entry — cleaner section grouping
+   ========================================================================== */
+.field-grid__divider {
+  grid-column: 1 / -1;
+  margin: 4px 0 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted)
+}
+
+.field-grid__divider small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--faint)
+}
+
+.field-grid .field--action {
+  margin-bottom: 18px
+}
+
+.field-grid .field--action .btnrow {
+  margin-bottom: 8px
+}
+
+.field--action__hint {
+  display: block;
+  font-size: 12px;
+  color: var(--faint)
+}
+
+#fExpTrip input,
+#fExpVehicle input {
+  font-family: var(--font)
+}
+
+
+/* ==========================================================================
+   GLOBAL POLISH PASS — modern motion, consistent spacing/hover language
+   Purely additive: raises specificity only where needed to layer on top of
+   existing rules, never removes anything already defined above.
+   ========================================================================== */
+
+/* ---- Consistent easing + smooth scrolling everywhere ---- */
+html {
+  scroll-behavior: smooth
+}
+
+* {
+  -webkit-tap-highlight-color: transparent
+}
+
+/* ---- Page transitions: fade + gentle rise (reuses existing `fade` keyframe) ---- */
+.view {
+  animation: fade .32s cubic-bezier(.2, .8, .2, 1) both
+}
+
+/* ---- Staggered entrance for dashboard cards/tiles so the page doesn't
+   just "pop" in all at once — each section settles in turn. ---- */
+.section {
+  animation: fade .4s cubic-bezier(.2, .8, .2, 1) both
+}
+
+.section:nth-of-type(1) {
+  animation-delay: .02s
+}
+
+.section:nth-of-type(2) {
+  animation-delay: .07s
+}
+
+.section:nth-of-type(3) {
+  animation-delay: .12s
+}
+
+.section:nth-of-type(4) {
+  animation-delay: .17s
+}
+
+.card,
+.tile-card,
+.qa__card,
+.trip-highlight {
+  animation: kpiRise .38s cubic-bezier(.2, .8, .2, 1) both
+}
+
+.grid-2>*:nth-child(2),
+.qa--checks>*:nth-child(2),
+.qa--checks>*:nth-child(4) {
+  animation-delay: .04s
+}
+
+.qa--checks>*:nth-child(3) {
+  animation-delay: .08s
+}
+
+.qa--checks>*:nth-child(5) {
+  animation-delay: .12s
+}
+
+/* ---- Unified hover/press language for interactive surfaces ---- */
+.card,
+.tile-card,
+.qa__card,
+.btn,
+.trip-highlight__btn,
+.backlink {
+  transition: transform .18s cubic-bezier(.2, .8, .3, 1), box-shadow .18s ease, background .18s ease, border-color .18s ease
+}
+
+.btn:active,
+.trip-highlight__btn:active,
+.backlink:active {
+  transform: scale(.97)
+}
+
+.qa__card:active {
+  transform: translateY(-1px) scale(.99)
+}
+
+/* ---- Consistent focus ring across custom controls (keyboard users) ---- */
+.btn:focus-visible,
+.card:focus-visible,
+.qa__card:focus-visible,
+.tile-card:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px
+}
+
+/* ---- Tighten runaway whitespace on very large desktop screens ---- */
+@media (min-width:1600px) {
+  .shell {
+    max-width: 1520px
+  }
+}
+
+/* ---- Trim default section/card gaps slightly for a denser, less
+   "empty" feel on desktop, while keeping mobile spacing untouched ---- */
+@media (min-width:761px) {
+
+  .section+.section,
+  .card+.card {
+    margin-top: 4px
+  }
+}
+
+/* ---- Small-phone safety net: prevent any fixed-width inline styles or
+   wide illustrations from forcing horizontal scroll on narrow devices ---- */
+@media (max-width:380px) {
+
+  .shell,
+  .view {
+    overflow-x: hidden
+  }
+
+  .pagehead__art,
+  .page-loader__scene svg,
+  .page-loader__truck {
+    max-width: 92vw
+  }
+}
+
+/* ---- Respect reduced motion for every animation added above ---- */
+@media (prefers-reduced-motion:reduce) {
+
+  .view,
+  .section,
+  .card,
+  .tile-card,
+  .qa__card,
+  .trip-highlight {
+    animation: none !important
+  }
+
+  html {
+    scroll-behavior: auto
+  }
+}
+
+/* ==========================================================================
+   FINAL SPACING / ALIGNMENT / RESPONSIVENESS PASS
+   Purely additive — layered on top of everything above via higher
+   specificity / later cascade order, nothing prior is removed.
+   ========================================================================== */
+
+/* ---- Consistent card & KPI padding/height/alignment ---- */
+.card__bd {
+  padding: 18px;
+}
+
+.section {
+  margin-top: 20px;
+}
+
+.section:first-of-type {
+  margin-top: 0;
+}
+
+.kpis,
+.kpis--metrics {
+  align-items: stretch;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  padding: 18px 20px 20px;
+}
+
+.kpi__label {
+  margin-bottom: 4px;
+}
+
+.kpi__val {
+  margin-top: auto;
+  margin-bottom: 4px;
+}
+
+.kpi__sub {
+  margin-top: 0;
+}
+
+/* ---- Consistent gaps everywhere sections/cards stack ---- */
+.grid-2,
+.grid-3,
+.kpis,
+.kpis--metrics,
+.qa,
+.qa--checks,
+.qa--compact,
+.tqa,
+.docgrid,
+.tile-actions {
+  gap: 16px;
+}
+
+/* ---- Remove leftover/duplicate top margins that created uneven gaps ---- */
+.card + .card,
+.section + .section {
+  margin-top: 16px;
+}
+
+/* ---- Align card headers consistently ---- */
+.card__hd {
+  align-items: center;
+  min-height: 52px;
+}
+
+/* ---- Prevent any element from forcing page-wide horizontal scroll ---- */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.shell,
+.view,
+.section,
+.card,
+.grid-2,
+.grid-3,
+.kpis,
+.kpis--metrics {
+  max-width: 100%;
+}
+
+img,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS — tablet & phone
+   ========================================================================== */
+
+/* Tablets / small laptops */
+@media (max-width: 1024px) {
+
+  .grid-2,
+  .kpis--metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qa,
+  .qa--checks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tqa {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .docgrid,
+  .tile-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Large phones / small tablets (portrait) */
+@media (max-width: 760px) {
+
+  .shell {
+    padding: 0 14px 28px;
+  }
+
+  .card__bd {
+    padding: 16px;
+  }
+
+  .kpi {
+    padding: 16px 16px 18px;
+  }
+
+  .grid-2,
+  .grid-3,
+  .kpis--metrics,
+  .docgrid,
+  .tile-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .qa,
+  .qa--checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tqa {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .btnrow {
+    flex-wrap: wrap;
+  }
+
+  .btnrow .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* Phones */
+@media (max-width: 480px) {
+
+  .shell {
+    padding: 0 10px 24px;
+  }
+
+  .hdr {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .card__bd {
+    padding: 14px;
+  }
+
+  .kpi {
+    min-height: 0;
+    padding: 14px 14px 16px;
+  }
+
+  .qa,
+  .qa--checks,
+  .tqa {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .pagehead h1 {
+    font-size: 22px;
+  }
+
+  .card__hd {
+    min-height: 46px;
+    padding: 14px 16px;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 360px) {
+
+  .qa,
+  .qa--checks,
+  .tqa {
+    grid-template-columns: 1fr;
+  }
+
+  .backlink,
+  .btnrow .btn {
+    width: 100%;
+  }
+}
+
+
+/* ==========================================================================
+   START TRIP PAGE — redesigned to match banner + icon-field layout
+   ========================================================================== */
+
+.pagehead--starttrip .pagehead__icon--starttrip {
+  background: linear-gradient(140deg, #6d5bf0, #4c3fd6);
+  box-shadow: 0 4px 12px rgba(90, 70, 230, .3);
+}
+
+.starttrip-card .card__bd {
+  display: block;
+  padding: 22px 24px;
+}
+
+.starttrip-grid {
+  display: grid;
+  gap: 20px 24px;
+}
+
+.starttrip-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.starttrip-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.starttrip-grid--odo {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.starttrip-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 22px 0;
+}
+
+.field--ico > span {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.field__ico-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.field__ico {
+  position: absolute;
+  left: 14px;
+  color: var(--faint);
+  pointer-events: none;
+  flex: none;
+  z-index: 1;
+}
+
+.field--ico input {
+  width: 100%;
+  padding-left: 42px;
+}
+
+.btn--geo-lg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(30, 111, 232, .22);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 700;
+  font-size: 14.5px;
+  white-space: nowrap;
+  transition: transform .16s, box-shadow .16s, background .16s;
+}
+
+.btn--geo-lg:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-1);
+  background: #dfe9fb;
+}
+
+.starttrip-actions {
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.starttrip-actions .btn {
+  flex: 0 1 200px;
+}
+
+@media (max-width: 900px) {
+  .starttrip-grid--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .starttrip-grid--2,
+  .starttrip-grid--odo {
+    grid-template-columns: 1fr;
+  }
+
+  .starttrip-grid--odo .btn--geo-lg {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .starttrip-grid--4 {
+    grid-template-columns: 1fr;
+  }
+
+  .starttrip-card .card__bd {
+    padding: 16px;
+  }
+
+  .starttrip-actions {
+    flex-direction: column-reverse;
+  }
+
+  .starttrip-actions .btn {
+    flex: 1 1 100%;
+  }
+}
+/* ==========================================================================
+   DASHBOARD SPACING / VISUAL POLISH PASS
+   Tightens the oversized vertical gaps seen on iPhone (Assigned Trip ->
+   Trip Timer -> Pause -> Fuel Entry stacking with too much air between
+   each block once .pagehead--flex collapses to a single column), and
+   adds a little extra visual polish (softer shadows, smoother hover/
+   press transitions). Appended last so it safely overrides the
+   equivalent, more generous values set earlier in this file without
+   touching any markup, functionality, or data mapping. Every rule below
+   is purely cosmetic (spacing, color, shadow, transition, radius).
+   ========================================================================== */
+
+/* Tighter page header + section rhythm across the whole app */
+.pagehead {
+  padding: 2px 0 14px;
+}
+
+.section {
+  margin-top: 16px;
+}
+
+.section:first-of-type {
+  margin-top: 0;
+}
+
+.card + .card,
+.section + .section {
+  margin-top: 12px;
+}
+
+.card__bd {
+  padding: 16px;
+}
+
+.card__hd {
+  min-height: 46px;
+  padding-bottom: 2px;
+}
+
+/* Trip header / timer / pause block: less breathing room between the
+   three when they stack on narrow screens, and a slightly shorter timer
+   pill so it doesn't dominate the top of the page. */
+.triptimer {
+  padding: 12px 26px;
+  min-width: 0;
+}
+
+.triptimer__val {
+  margin-top: 2px;
+}
+
+@media (max-width: 700px) {
+  .pagehead--flex {
+    gap: 10px;
+  }
+
+  .pagehead {
+    padding-bottom: 12px;
+  }
+}
+
+/* Quick-action tiles (Fuel entry / Report incident / Vehicle issue, etc.)
+   and the general card/tile grids: smaller gap so more of the next card
+   peeks into view instead of one tile filling the screen. */
+.tqa,
+.grid-2,
+.grid-3,
+.kpis,
+.kpis--metrics,
+.qa,
+.qa--checks,
+.qa--compact,
+.docgrid,
+.tile-actions {
+  gap: 12px;
+}
+
+.tqa__card {
+  padding: 14px 16px;
+}
+
+.kpi {
+  padding: 14px 16px 16px;
+}
+
+/* Quieter, more consistent shadows + a touch of lift/press on every
+   interactive surface, so the dashboard feels responsive rather than
+   static. */
+.card,
+.tile-card,
+.tqa__card,
+.kpi {
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.card:hover,
+.tile-card:hover {
+  box-shadow: var(--sh-2, 0 10px 24px rgba(20, 30, 60, .1));
+}
+
+.btn {
+  transition: transform .14s ease, box-shadow .14s ease, background .14s ease, filter .14s ease;
+}
+
+.btn:active {
+  transform: translateY(1px) scale(.99);
+}
+
+.btn--primary:hover {
+  filter: brightness(1.05);
+}
+
+input,
+select,
+textarea {
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+/* Small screens generally: shave a bit more off the outer shell padding
+   so content isn't fighting the notch/home-indicator for space. */
+@media (max-width: 480px) {
+  .shell {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  .card__bd {
+    padding: 14px;
+  }
+}
+
+/* ==========================================================================
+   POD Saved page — built from the supplied Proof of Delivery reference
+   template (same class names/structure, scoped under .poddoc-sheet so
+   nothing here can collide with or override any existing rule above).
+   The exact same markup + these rules (mirrored) are what the Download
+   button emits, so the on-screen page and the downloaded A4 file match.
+   ========================================================================== */
+.poddoc-sheet-outer {
+  background: #f2f4f7;
+  padding: 20px;
+  border-radius: var(--r-lg);
+  overflow-x: auto
+}
+
+.poddoc-sheet {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  padding: 12mm 15mm;
+  border-radius: 4px;
+  box-shadow: 0 0 8px rgba(0, 0, 0, .15);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #1a1a1a
+}
+
+.poddoc-sheet * {
+  box-sizing: border-box
+}
+
+.poddoc-sheet .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px
+}
+
+.poddoc-sheet .logo-block {
+  display: flex;
+  flex-direction: column
+}
+
+.poddoc-sheet .logo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px
+}
+
+.poddoc-sheet .logo-name {
+  font-size: 26px;
+  font-weight: 800;
+  color: #f7941d;
+  letter-spacing: 1px
+}
+
+.poddoc-sheet .logo-name .sky {
+  color: #1c3f94
+}
+
+.poddoc-sheet .logo-sub {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1c3f94;
+  margin-top: -6px
+}
+
+.poddoc-sheet .arrow {
+  width: 0;
+  height: 0;
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+  border-left: 20px solid #1c3f94;
+  margin-left: -4px
+}
+
+.poddoc-sheet .arrow.orange {
+  border-left-color: #f7941d;
+  margin-left: -14px
+}
+
+.poddoc-sheet .tagline {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #555;
+  margin-top: 6px
+}
+
+.poddoc-sheet .title-block {
+  text-align: right
+}
+
+.poddoc-sheet .title-block h1 {
+  margin: 0;
+  font-size: 32px;
+  color: #14224e;
+  letter-spacing: 1px
+}
+
+.poddoc-sheet .title-block .sub {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: #8b93a7;
+  margin-top: 2px
+}
+
+.poddoc-sheet .date-line {
+  text-align: right;
+  margin: 10px 0 14px;
+  font-weight: 700;
+  font-size: 14px
+}
+
+.poddoc-sheet .date-line .field-val {
+  border: none;
+  border-bottom: 1px solid #999;
+  min-width: 180px;
+  font-size: 14px;
+  margin-left: 8px;
+  padding: 2px 4px;
+  font-weight: 700;
+  display: inline-block
+}
+
+.poddoc-sheet .section-title {
+  background: #cfe2f3;
+  color: #14224e;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: .5px;
+  padding: 6px 12px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  border-radius: 2px
+}
+
+.poddoc-sheet .two-col {
+  display: flex;
+  gap: 30px;
+  width: 100%;
+  min-width: 0
+}
+
+.poddoc-sheet .col {
+  flex: 1;
+  min-width: 0
+}
+
+.poddoc-sheet .field-row {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  min-width: 0
+}
+
+.poddoc-sheet .field-label {
+  min-width: 170px;
+  color: #222;
+  flex-shrink: 0
+}
+
+.poddoc-sheet .field-colon {
+  margin: 0 8px;
+  flex-shrink: 0
+}
+
+.poddoc-sheet .field-val {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid #bbb;
+  font-size: 12px;
+  padding: 1px 4px;
+  background: transparent;
+  color: #1a1a1a;
+  font-weight: 600
+}
+
+.poddoc-sheet table.order-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 6px
+}
+
+.poddoc-sheet table.order-table th {
+  background: #f3f5f8;
+  border: 1px solid #cfd4dc;
+  padding: 6px 6px;
+  font-size: 12px;
+  text-align: center;
+  color: #14224e
+}
+
+.poddoc-sheet table.order-table td {
+  border: 1px solid #cfd4dc;
+  padding: 4px 6px;
+  text-align: center;
+  height: 24px;
+  font-size: 12px
+}
+
+.poddoc-sheet table.order-table td.item-name {
+  text-align: left
+}
+
+.poddoc-sheet .order-total-row td {
+  text-align: right;
+  font-weight: 700;
+  padding: 10px 12px
+}
+
+.poddoc-sheet .signoff-cols {
+  display: flex;
+  justify-content: space-between;
+  gap: 25px;
+  margin-top: 10px;
+  width: 100%;
+  min-width: 0
+}
+
+.poddoc-sheet .poddoc-signbox {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 4px
+}
+
+.poddoc-sheet .poddoc-signbox img {
+  max-height: 58px;
+  max-width: 100%
+}
+
+.poddoc-sheet .poddoc-signbox--pad {
+  flex-direction: column;
+  align-items: stretch
+}
+
+.poddoc-sheet .poddoc-signbox--pad .sigpad {
+  width: 100%
+}
+
+.poddoc-sheet .poddoc-signbox--pad .sigpad__canvas {
+  height: 90px
+}
+
+@media (max-width: 720px) {
+  .poddoc-sheet {
+    width: 100%;
+    min-height: 0;
+    padding: 6mm
+  }
+
+  .poddoc-sheet .two-col,
+  .poddoc-sheet .signoff-cols {
+    flex-direction: column;
+    gap: 4px
+  }
+
+  .poddoc-sheet .title-block {
+    text-align: left
+  }
+
+  .poddoc-sheet .date-line {
+    text-align: left
+  }
+}
+/* --- POD Saved popup: receiver-signature upload control & PDF export --- */
+.poddoc-sheet [data-pdf-exclude] {
+  margin-bottom: 0;
+}
+.poddoc-sheet .poddoc-signbox img {
+  max-height: 58px;
+  max-width: 100%;
+  object-fit: contain;
+}
+@media print {
+  .poddoc-sheet [data-pdf-exclude] {
+    display: none !important;
+  }
+  .poddoc-sheet .poddoc-signbox img[hidden] {
+    display: block !important;
+  }
+}
+
+/* --- POD Saved page shown as a popup/modal, ~1000x950, over the
+       current page rather than as a full-page view. Reuses the
+       existing view-nav show/hide (#viewPodResult[hidden]) — only the
+       presentation changes. --- */
+#viewPodResult:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(15, 39, 72, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.podresult-modalbox {
+  position: relative;
+  background: var(--bg, #f2f4f7);
+  width: 1000px;
+  max-width: 100%;
+  height: 950px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  border-radius: var(--r-lg, 12px);
+  padding: 44px 24px 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+}
+
+.podresult-modalbox__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+}
+
+@media (max-width: 720px) {
+  #viewPodResult:not([hidden]) {
+    padding: 0
+  }
+
+  .podresult-modalbox {
+    width: 100%;
+    height: 100%;
+    max-height: 100vh;
+    border-radius: 0
+  }
+}
+.poddoc-pdf-render [data-pdf-exclude] {
+  display: none !important;
+}
+
+/* ==========================================================================
+   POD Completion KPI — sits inside the "Trip details" card, so it is a
+   compact, read-only variant of the .kpi tile (no tall min-height, no
+   lift-on-hover since it isn't clickable).
+   ========================================================================== */
+.kpis--pod {
+  display: block;
+  margin: 14px 0 16px;
+  perspective: none
+}
+
+.kpi--pod {
+  min-height: 0;
+  padding: 14px 18px 16px;
+  cursor: default
+}
+
+.kpi--pod:hover,
+.kpi--pod.is-lit,
+.kpi--pod:active {
+  transform: none
+}
+
+.kpi--pod .kpi__label {
+  min-height: 0;
+  margin-bottom: 6px
+}
+
+.kpi--pod .kpi__val {
+  font-size: 30px
+}
+
+.kpi--pod:hover .kpi__val,
+.kpi--pod.is-lit .kpi__val {
+  transform: none
+}
+
+.kpi--pod .kpi__sub {
+  min-height: 0;
+  margin: 6px 0 10px
+}
+
+.kpi--pod .kpi__bar .bar {
+  height: 6px;
+  border-radius: 99px;
+  overflow: hidden
+}
+
+.kpi--pod .kpi__bar .bar>i {
+  transition: width .6s cubic-bezier(.2, .8, .3, 1)
 }

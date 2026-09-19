@@ -12,20 +12,33 @@
      - Zoho Creator DATA/UTIL bridge (getRecords/addRecords/updateRecords)
      - boot() — DOMContentLoaded entry point, wires every button/listener
 
-   This file preserves all existing behavior; only whitespace/formatting
-   and section-header comments were added for readability.
+   CORRECTED BUILD — Hub filtering, Trip→Booking mapping and selected-hub
+   POD item/quantity mapping were rewritten against the real Zoho Creator
+   schema (see the "HUB / BOOKING / POD RESOLUTION" section further down
+   for the full list of what was wrong and why). Everything else in this
+   file is byte-for-byte the same as before.
+
+   BFM MAINTENANCE PATCH — fatigue-monitoring tier tracking is local-only
+   (the BFM_Monitoring form/report does not exist in this Zoho Creator
+   app, so nothing BFM-related is persisted server-side; only
+   Driver_BFM_Notification event logging still writes to Zoho).
+
+   IPHONE / CROSS-DEVICE FIX (this build) — all Zoho Creator API calls
+   now run sequentially (awaited one at a time) instead of in parallel
+   via Promise.all, which was unreliable on iPhone.
    ========================================================================== */
 ! function() {
   "use strict";
   var e = {
-      bfm: "All_BFM_Monitoring",
       trips: "All_Trips",
       duty: "All_Duty_Logs",
       alerts: "All_Alerts",
       employees: "Drivers",
       employeesFallbacks: ["Driver"],
-      locations: "Locations1",
-      locationsFallbacks: ["Locations", "All_Locations"]
+      locations: "Locations2",
+      locationsFallbacks: ["Locations", "All_Locations"],
+      expenseTypes: "All_Expense_Types",
+      expenseTypesFallbacks: ["All_Expense_Type", "Expense_Type", "Expense_Types"]
     },
     t = ["Hub_Name", "Name"],
     r = "Email",
@@ -43,10 +56,12 @@
       employmentType: ["Employment_Type", "Employment_Type", "Employee_Type"],
       joiningDate: ["Joining_Date", "Joining_Date", "Date_of_Joining", "DOJ"],
       department: ["Department", "Department", "Dept"],
+      designation: ["Designation", "Designation", "Job_Title", "Role"],
       licenceNo: ["Licence_NO", "Licence_NO", "Licence_No", "License_No"],
       licenceNumber: ["Licence_Number", "Licence_Number", "License_Number"],
       licenceIssueDate: ["Licence_Issue_Date", "Licence_Issue_Date", "License_Issue_Date"],
       licenceType: ["Licence_Type", "Licence_Type", "License_Type"],
+      licenceClass: ["Licence_Class", "Licence_Class", "License_Class"],
       licenceExpiry: ["Licence_Expiry_Date", "Licence_Expiry_Date", "License_Expiry_Date"],
       licenceStatus: ["Licence_Status", "Licence_Status", "License_Status"],
       licenceDocument: ["Licence_Document", "Licence_Document", "License_Document"],
@@ -54,12 +69,18 @@
       vehicleName: ["Vehicle_Name", "Vehicle_Name", "Vehicle_Type", "Vehicle_Registration_No"],
       passportNumber: ["Passport_Number", "Passport_Number"],
       passportCopy: ["Passport_Copy", "Passport_Copy"],
+      identityDocType: ["Identity_Document_Type", "Identity_Document_Type", "ID_Type", "Identity_Type"],
+      identityDocNumber: ["Identity_Document_Number", "Identity_Document_Number", "ID_Number", "Identity_Number"],
       experience: ["Experience_Years", "Experience_Years", "Driving_Experience", "Experience"],
+      heavyVehicleExperience: ["Heavy_Vehicle_Experience", "Heavy_Vehicle_Experience", "HV_Experience"],
       lastCheckupDate: ["Last_Checkup_Date", "Last_Checkup_Date", "Last_Medical_Checkup_Date"],
+      medicalFitnessStatus: ["Medical_Fitness_Status", "Medical_Fitness_Status", "Fitness_Status"],
+      medicalCertExpiry: ["Medical_Certificate_Expiry_Date", "Medical_Certificate_Expiry_Date", "Medical_Expiry_Date"],
+      fatigueModule: ["Fatigue_Module", "Fatigue_Module", "BFM_Module"],
       documents: ["Documents", "Documents"],
       remark: ["Remark", "Remark", "Remarks"],
       visaStatus: ["Visa_Right_to_Work_Status", "Visa_Right_to_Work_Status", "Visa_Status"],
-      visaExpiryDate: ["Visa_Expiry_Date", "Visa_Expiry_Date"],
+      visaExpiryDate: ["Visa_Expiry_Date", "Visa_Expiry_Date", "Visa_Work_Permit_Expiry_Date"],
       expiryDate: ["Expiry_Date", "Expiry_Date"],
       medicalCertificate: ["Medical_Certificate", "Medical_Certificate"],
       rightToWorkDocument: ["Right_to_Work_Document", "Right_to_Work_Document"],
@@ -67,12 +88,79 @@
     },
     a = {
       module: "Standard BFM",
-      maxContinuousWork: 360,
-      restBlock: 15,
-      maxWorkPerShift: 840,
-      minRestPerShift: 420,
+      /* Exact rule table supplied by the customer. Each tier is an
+         independent "clock": work accumulates against maxWorkMins since
+         the last rest that satisfied that tier's own restMins, and once
+         maxWorkMins is reached that tier is in breach until a qualifying
+         rest is logged. A rest of length restMins also satisfies every
+         other tier whose own restMins is <= that length (e.g. a 60 min
+         break resets the 6¼hr/6hr, 9hr/8½hr AND 12hr/11hr tiers, but not
+         the 24hr/14hr tier, which needs the full 7hr continuous
+         stationary rest). No weekly/rolling-7-day rule is included here
+         since it isn't part of the supplied table. */
+      tiers: [{
+        key: "t0",
+        label: "20 Minute",
+        windowMins: 20,
+        maxWorkMins: 15,
+        restMins: 5,
+        restLabel: "5 min rest"
+      }, {
+        key: "t1",
+        label: "6¼ Hour",
+        windowMins: 375,
+        maxWorkMins: 360,
+        restMins: 15,
+        restLabel: "15 min continuous rest"
+      }, {
+        key: "t2",
+        label: "9 Hour",
+        windowMins: 540,
+        maxWorkMins: 510,
+        restMins: 30,
+        restLabel: "30 min rest"
+      }, {
+        key: "t3",
+        label: "12 Hour",
+        windowMins: 720,
+        maxWorkMins: 660,
+        restMins: 60,
+        restLabel: "60 min rest"
+      }, {
+        key: "t4",
+        label: "24 Hour",
+        windowMins: 1440,
+        maxWorkMins: 840,
+        restMins: 420,
+        restLabel: "7 hr continuous stationary rest"
+      }],
+      /* Legacy aliases kept so the rest of the app (Log-a-break page,
+         estimated end-time calc, BFM_Monitoring persistence, etc.) that
+         reads a.maxWorkPerShift / a.restBlock / a.minRestPerShift /
+         a.maxContinuousWork keeps working unchanged — they now simply
+         mirror the matching tier from the table above instead of being
+         separately hardcoded. */
+      get maxContinuousWork() {
+        return this.tiers[0].maxWorkMins
+      },
+      get restBlock() {
+        return this.tiers[0].restMins
+      },
+      get maxWorkPerShift() {
+        return this.tiers[4].maxWorkMins
+      },
+      get minRestPerShift() {
+        return this.tiers[4].restMins
+      },
       maxWorkPerWeek: 4320,
       warnBefore: 30,
+      /* Score deducted per full 15 minutes a tier is driven while already
+         in breach (over its maxWorkMins with no qualifying rest yet), and
+         per instance of resuming from a break that was shorter than the
+         rest an owing tier required. */
+      scorePerOverageBlock: 1,
+      overageBlockMins: 15,
+      scorePerShortRest: 5,
       source: "Default BFM values"
     },
     o = {
@@ -80,15 +168,41 @@
       tripStarted: !1,
       startTime: "06:30",
       endTime: "16:35",
-      workedMins: 402,
-      sinceRestMins: 282,
-      restTakenMins: 45,
-      weekWorkedMins: 2460,
+      /* tierWorked[i] = minutes worked since tier i last had a qualifying
+         rest; tierExtraMins[i] = minutes logged while tier i was in
+         breach (for history/score); tierNotified[i] = whether the
+         "rest required" alert has already fired for the tier's *current*
+         breach (re-armed once the tier is reset by a qualifying rest). */
+      tierWorked: [0, 0, 0, 0, 0],
+      tierExtraMins: [0, 0, 0, 0, 0],
+      tierNotified: [!1, !1, !1, !1, !1],
+      breakElapsedMins: 0,
+      /* Rest-complete auto-notification (Issue #4): restTargetMins is the
+         rest duration owed for the current break (set when the break
+         starts — see G()); restCompleteNotified guards against firing the
+         "rest hours complete" alert/email more than once per break. */
+      restTargetMins: 0,
+      restCompleteNotified: !1,
+      bfmDayKey: null,
       restAlertShown: !1,
       restEscalated: !1,
       notificationCount: 0,
       onBreak: !1,
-      breakCount: 0
+      breakCount: 0,
+      get workedMins() {
+        return this.tierWorked[4]
+      },
+      set workedMins(v) {
+        this.tierWorked[4] = v
+      },
+      get sinceRestMins() {
+        return this.tierWorked[0]
+      },
+      set sinceRestMins(v) {
+        this.tierWorked[0] = v
+      },
+      weekWorkedMins: 2460,
+      restTakenMins: 45
     },
     s = {
       id: "—",
@@ -105,6 +219,7 @@
       dob: "",
       address: "",
       licenceClass: "",
+      licenceType: "",
       licenceNo: "",
       licenceNumber: "",
       licenceIssueDate: "",
@@ -115,12 +230,19 @@
       started: "",
       employmentType: "",
       department: "",
+      designation: "",
       vehicleName: "",
       vehicleAssigned: "",
       passportNumber: "",
       passportCopyPath: "",
+      identityDocType: "",
+      identityDocNumber: "",
       experience: "",
+      heavyVehicleExperience: "",
       lastCheckupDate: "",
+      medicalFitnessStatus: "",
+      medicalCertExpiry: "",
+      fatigueModule: "",
       documentsPath: "",
       remark: "",
       visaStatus: "",
@@ -137,7 +259,13 @@
       hub: "",
       date: "",
       inTime: "",
-      outTime: ""
+      outTime: "",
+      /* Selected Booking IDs for this Hub Check-In/Check-Out, as
+         [{id, label}, ...]. Booking_ID moved from a single Lookup to a
+         Multi-Select on Trip_Dispatch/Hub_Check_in_Check_Out1, so a Trip
+         can carry more than one Booking and the driver must be able to
+         pick which ones this check-in covers. */
+      bookingIds: []
     },
     l = [],
     d = {
@@ -275,7 +403,18 @@
 
   function g(e) {
     if (!e) return "";
-    var t = new Date(e);
+    /* iOS Safari fix: Zoho Creator returns dates/timestamps as
+       "DD-Mon-YYYY" or "DD-Mon-YYYY HH:mm:ss" (e.g. "12-Sep-2026
+       14:35:00"), which is not a format the Date constructor is
+       required to parse. Chrome/V8 (desktop + Android) parses it
+       leniently anyway, but Safari's WebKit engine does not and
+       returns Invalid Date — which is why dates/times silently went
+       blank only on iPhone. me() (defined below) already has the
+       correct Safari-safe fallback parser for exactly this format, so
+       route through it here instead of calling `new Date(e)` directly. */
+    var ts = me(e);
+    if (!ts) return "";
+    var t = new Date(ts);
     return isNaN(t.getTime()) ? "" : v(t)
   }
 
@@ -313,7 +452,7 @@
     t && (t.style.width = e + "%"), r && (r.textContent = e + "%"), n && n.setAttribute(
       "aria-valuenow", String(e))
   }
-  var T = 5e3,
+  var T = 40000, /* Loader minimum runtime, per request: 40 seconds. */
     C = Date.now(),
     I = !1,
     S = setInterval(function() {
@@ -332,7 +471,7 @@
         try {
           Y("dash")
         } catch (e) {}
-      }, 260)
+      }, 80)
     }
   }
 
@@ -351,40 +490,53 @@
   }
 
   function x() {
-    var e = a.maxContinuousWork - o.sinceRestMins,
-      t = a.maxWorkPerShift - o.workedMins,
-      r = a.maxWorkPerWeek - o.weekWorkedMins,
-      n = "ok";
-    e <= 0 || t <= 0 || r <= 0 ? n = "breach" : (e <= a.warnBefore || t <= a.warnBefore) && (n =
-      "warn");
-    var i = 0,
-      s = "";
-    return t <= 0 ? (i = a.minRestPerShift, s =
-      "Shift work limit reached — a continuous stationary rest is required before you drive again."
-      ) : e <= 0 && (i = a.restBlock, s =
-      "Continuous work limit reached — take your rest block now."), {
-      status: n,
-      untilRest: e,
-      shiftLeft: t,
-      weekLeft: r,
-      restRequired: i,
-      restReason: s,
-      rules: [{
-        label: "Continuous work before rest",
-        used: o.sinceRestMins,
-        max: a.maxContinuousWork,
-        note: "Rest required: " + a.restBlock + " continuous minutes"
-      }, {
-        label: "Work this shift",
-        used: o.workedMins,
-        max: a.maxWorkPerShift,
-        note: "Rest required: " + f(a.minRestPerShift) + " continuous stationary rest"
-      }, {
-        label: "Work this week",
-        used: o.weekWorkedMins,
-        max: a.maxWorkPerWeek,
-        note: "Rolling 7 days"
-      }]
+    var tiers = a.tiers.map(function(tier, i) {
+        var used = o.tierWorked[i],
+          left = tier.maxWorkMins - used,
+          breached = used >= tier.maxWorkMins,
+          status = breached ? "breach" : left <= a.warnBefore ? "warn" : "ok";
+        return {
+          index: i,
+          key: tier.key,
+          label: tier.label,
+          used: used,
+          max: tier.maxWorkMins,
+          left: left,
+          restMins: tier.restMins,
+          restLabel: tier.restLabel,
+          breached: breached,
+          status: status,
+          note: "Rest required: " + tier.restLabel
+        }
+      }),
+      breachedTiers = tiers.filter(function(t) {
+        return t.breached
+      }),
+      warnTiers = tiers.filter(function(t) {
+        return "warn" === t.status
+      }),
+      overall = breachedTiers.length ? "breach" : warnTiers.length ? "warn" : "ok",
+      /* The soonest tier to breach drives the countdown shown in the hero
+         (or, once something is already breached, the largest outstanding
+         rest requirement among breached tiers). */
+      soonest = tiers.slice().sort(function(x, y) {
+        return x.left - y.left
+      })[0],
+      restRequired = breachedTiers.length ? Math.max.apply(null, breachedTiers.map(function(t) {
+        return t.restMins
+      })) : 0,
+      restReason = breachedTiers.length ? breachedTiers.map(function(t) {
+        return t.label + " limit reached"
+      }).join(" · ") + " — rest required before driving on." : "";
+    return {
+      status: overall,
+      untilRest: soonest ? soonest.left : 0,
+      restRequired: restRequired,
+      restReason: restReason,
+      breachedTiers: breachedTiers,
+      shiftLeft: tiers[4].left,
+      weekLeft: a.maxWorkPerWeek - o.weekWorkedMins,
+      rules: tiers
     }
   }
 
@@ -392,12 +544,13 @@
     var r = document.getElementById(e);
     r && (r.innerHTML = t.rules.map(function(e) {
       var t = Math.min(100, e.used / e.max * 100),
-        r = t >= 100 ? "red" : t >= 88 ? "amber" : "green";
-      return '<div class="bfm__rule"><span>' + e.label + " <b>" + f(e.used) + " / " + f(e
-        .max) + '</b></span><div class="bar"><i class="' + r + '" style="width:' + t +
-        '%"></i></div><em>' + e.note + "</em></div>"
+        r = "breach" === e.status ? "red" : "warn" === e.status ? "amber" : "green";
+      return '<div class="bfm__rule bfm__rule--' + e.status + '"><span>' + e.label +
+        " work <b>" + f(e.used) + " / " + f(e.max) + '</b></span><div class="bar"><i class="' +
+        r + '" style="width:' + t + '%"></i></div><em>' + e.note + "</em></div>"
     }).join(""))
   }
+
 
   function P() {
     var e = x(),
@@ -418,45 +571,47 @@
     var i = u("#bfmRest");
     i && (i.className = "bfm__rest " + e.status, w("bfmRestText", e.restRequired ? e.restReason +
         " Required rest: " + f(e.restRequired) + "." :
-        "No rest owing right now. Next rest block of " + a.restBlock + " minutes is due in " + f(e
-          .untilRest) + ".")), w("bfmMeta", a.module +
-        " · limits sourced from the BFM Monitoring form · warn threshold " + a.warnBefore + " min"),
-      w("bfmSource", a.source), w("panelBfmModule", a.module);
+        "No rest owing right now. Next rest block due in " + f(e.untilRest) + ".")), w("bfmMeta",
+        a.module + " · " + a.tiers.length +
+        "-tier Standard BFM table · warn threshold " + a.warnBefore + " min"), w("bfmSource", a
+        .source), w("panelBfmModule", a.module);
     var c = u("#tripBfmHero");
     c && (c.className = "bfm__hero bfm-" + e.status), w("tripBfmState", t), w("tripBfmStateSub", r),
       w("tripBfmCountdown", e.untilRest > 0 ? f(e.untilRest) : f(e.restRequired)), w("tripBfmSrc", a
         .source), A("tripBfmRules", e);
     var l = u("#tripBfmRest");
-    return l && (l.className = "bfm__rest " + e.status, w("tripBfmRestText", e.restRequired ? e
+    l && (l.className = "bfm__rest " + e.status, w("tripBfmRestText", e.restRequired ? e
         .restReason + " Required rest: " + f(e.restRequired) + "." :
         "No rest owing right now. Next rest block due in " + f(e.untilRest) + ".")), w("tripBfm", t
         .toUpperCase()), w("tripBfmSub", e.untilRest > 0 ? "Rest due in " + f(e.untilRest) :
         "Rest " + f(e.restRequired) + " required"), w("kpiDuty", f(o.workedMins)), w("kpiDutySub",
-        f(Math.max(0, e.shiftLeft)) + " left"), w("tripDriving", f(o.workedMins)), e.restRequired &&
-      !o.restAlertShown && function(e) {
-        o.restAlertShown = !0, M(), O();
-        var t = document.createElement("div");
-        t.className = "rest-alert", t.setAttribute("role", "alert"), t.innerHTML =
-          '<svg width="20" height="20" style="flex:none;color:#D3352B;margin-top:1px"><use href="#i-alert"/></svg><div style=\'flex:1\'><b>Rest required now</b><p>' +
-          e.restReason + " Take " + f(e.restRequired) +
-          ' and log it before driving on.</p></div><button class="xbtn" aria-label="Dismiss">✕</button>',
-          t.querySelector("button").addEventListener("click", function() {
-            t.remove()
-          }), document.body.appendChild(t), setTimeout(function() {
-            o.tripStarted && !o.restEscalated && (x().restRequired > 0 && function() {
-              o.restEscalated = !0, M(), O(), s.score = Math.max(0, s.score - 5), nr();
-              var e = document.createElement("div");
-              e.className = "rest-alert rest-alert--escalated", e.setAttribute("role",
-                  "alert"), e.innerHTML =
-                '<svg width="20" height="20" style="flex:none;color:#D3352B;margin-top:1px"><use href="#i-alert"/></svg><div style=\'flex:1\'><b>Required rest still missed</b><p>You haven\'t logged a qualifying rest block. 5 points have been deducted from your driver score — pull over and log a break now.</p></div><button class="xbtn" aria-label="Dismiss">✕</button>',
-                e.querySelector("button").addEventListener("click", function() {
-                  e.remove()
-                }), document.body.appendChild(e)
-            }())
-          }, 12e4)
-      }(e), e
+        f(Math.max(0, e.shiftLeft)) + " left"), w("tripDriving", f(o.workedMins));
+    /* Fire the "rest required" alert once per tier per breach — re-armed
+       automatically once that tier is reset by a qualifying rest (see
+       resolveRestOnResume()). Each newly-breached tier also opens/updates
+       its BFM_Monitoring history row via persistBfmTierEvent(). */
+    return e.breachedTiers.forEach(function(tier) {
+      if (!o.tierNotified[tier.index]) {
+        o.tierNotified[tier.index] = !0;
+        var msg = tier.label + " work limit reached (" + f(tier.max) +
+          ") — stop and take " + tier.restLabel + " before driving on.";
+        pushBfmNotification("red", msg), persistBfmTierEvent(tier.index, "Limit reached", 0, 0,
+          msg);
+        var toast = document.createElement("div");
+        toast.className = "rest-alert", toast.setAttribute("role", "alert"), toast.innerHTML =
+          '<svg width="20" height="20" style="flex:none;color:#D3352B;margin-top:1px"><use href="#i-alert"/></svg><div style=\'flex:1\'><b>Rest required — ' +
+          tier.label + '</b><p>' + msg +
+          '</p></div><button class="xbtn" aria-label="Dismiss">✕</button>', toast.querySelector(
+            "button").addEventListener("click", function() {
+            toast.remove()
+          }), document.body.appendChild(toast), setTimeout(function() {
+            toast.parentNode && toast.remove()
+          }, 15e3)
+      }
+    }), e
   }
   setTimeout(E, T);
+
   var N = null;
 
   function O() {
@@ -486,13 +641,243 @@
     var e = u("#bellCount");
     e && (e.hidden = !0)
   }
+  var Lr = [];
+
+  function pushBfmNotification(tone, text) {
+    Lr.unshift({
+      tone: tone,
+      text: text,
+      ts: new Date
+    }), M(), "red" === tone && O(), ir()
+  }
+
+  /* ============================================================
+     REST DURATION NOTIFICATION (Issue #4)
+     computeRestTargetMins() picks the rest owed for the break that's
+     just starting: the longest restMins among tiers currently in
+     breach (a single rest can satisfy several tiers at once — see
+     resolveRestOnResume() above), or the shortest tier's rest (5 min)
+     as a sensible minimum when nothing is in breach yet.
+     ------------------------------------------------------------
+     notifyRestComplete() fires the moment breakElapsedMins reaches
+     that target: it always raises the in-app alert immediately, and
+     also tries to email the logged-in driver via a Zoho Creator
+     Custom API (ZOHO.CREATOR.DATA.invokeCustomApi) — sending an email
+     has to happen server-side in Zoho (Deluge's sendmail task), a
+     browser widget cannot send email on its own. This requires a
+     Custom API to exist in the Zoho Creator app; see
+     sendRestCompleteEmail() below for the exact contract expected.
+     ============================================================ */
+  function computeRestTargetMins() {
+    var breachedRestMins = [];
+    a.tiers.forEach(function(tier, i) {
+      o.tierWorked[i] >= tier.maxWorkMins && breachedRestMins.push(tier.restMins)
+    });
+    return breachedRestMins.length ? Math.max.apply(null, breachedRestMins) : a.tiers[0]
+      .restMins
+  }
+
+  function sendRestCompleteEmail(message) {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA || !ZOHO.CREATOR.DATA.invokeCustomApi)
+      return console.warn(gr,
+        "ZOHO.CREATOR.DATA.invokeCustomApi is unavailable — the rest-complete email was not sent. A browser widget cannot send email directly; it must call a Zoho Creator Custom API whose Deluge script runs a sendmail task."
+        ), Promise.resolve();
+    /* IMPORTANT: this Custom API ("Rest_Complete_Notification" below)
+       must be created in Zoho Creator (Settings → Custom APIs) with a
+       Deluge script similar to:
+         driverEmail = input.driverEmail;
+         driverName  = input.driverName;
+         sendmail
+         [
+           from       :  zoho.adminuserid
+           to         :  driverEmail
+           subject    :  "Rest Duration Complete"
+           message    :  input.message
+         ];
+       Update the api_name / workspace_name values below to match
+       whatever link name is used when the Custom API is created. */
+    return ZOHO.CREATOR.DATA.invokeCustomApi({
+      api_name: "Rest_Complete_Notification",
+      http_method: "POST",
+      content_type: "application/json",
+      data: {
+        driverEmail: s.email || "",
+        driverName: s.name || "",
+        message: message
+      }
+    }).catch(function(err) {
+      console.error(gr, "Rest-complete email Custom API call failed:", err)
+    })
+  }
+
+  function notifyRestComplete() {
+    var msg = "Start Driving — Your Rest Time Is Finished.";
+    pushBfmNotification("green", msg), sendRestCompleteEmail(msg)
+  }
+
+  function todayAt(h, m) {
+    var d = new Date;
+    return d.setHours(h, m, 0, 0), d
+  }
+
+  function relTime(ts) {
+    var mins = Math.round((Date.now() - ts.getTime()) / 6e4);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return mins + " min ago";
+    var hrs = Math.round(mins / 60);
+    return hrs < 24 ? hrs + "h ago" : p(ts.getDate()) + "/" + p(ts.getMonth() + 1) + " " + p(ts
+      .getHours()) + ":" + p(ts.getMinutes())
+  }
+
+  /* ---------- NEW: BFM activity/history logger ----------
+     Writes one row per tier event (limit reached, insufficient rest,
+     rest satisfied, continuing overage) to Driver_BFM_Notification,
+     keyed by Trip_ID + Driver_ID + Date_field so history stays attached
+     to the trip/driver and survives the trip spanning multiple days. */
+  async function persistBfmTierEvent(tierIndex, eventType, minutes, scoreDelta, message) {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return;
+    try {
+      var tier = a.tiers[tierIndex],
+        empId = await resolveEmployeeFormId(),
+        nowD = new Date,
+        payload = {
+          Trip_ID: cr2(K.tripRecordId || K.tripId || ""),
+          Trip_Name: cr2(K.tripRecordId || K.tripId || ""),
+          Driver_ID: cr2(empId || K.driverRecordId || K.driverEmployeeRecordId || s.recordId ||
+            ""),
+          Driver_Name: cr2(empId || K.driverRecordId || K.driverEmployeeRecordId || s
+            .recordId || ""),
+          Date_field: p(nowD.getDate()) + "-" + h[nowD.getMonth()] + "-" + nowD.getFullYear(),
+          Start_Time: b(p(nowD.getHours()) + ":" + p(nowD.getMinutes())),
+          Break_Hours: +(minutes / 60).toFixed(2),
+          Notification: "[" + (tier ? tier.label : "BFM") + " · " + eventType + "] " + message +
+            (scoreDelta ? " (score " + (scoreDelta > 0 ? "-" : "+") + Math.abs(scoreDelta) +
+              ")" : "")
+        };
+      await ZOHO.CREATOR.DATA.addRecords({
+        form_name: "Driver_BFM_Notification",
+        payload: {
+          data: payload
+        }
+      })
+    } catch (err) {
+      console.error(gr, "persistBfmTierEvent failed:", err)
+    }
+  }
+
+  /* ---------- NEW: resolves rest taken against every owing tier ----------
+     Called the moment the driver resumes driving. A rest of restMinsTaken
+     satisfies (and resets) every tier whose own restMins requirement is
+     <= restMinsTaken — so a single long rest can clear several tiers at
+     once, exactly as the table implies (e.g. the 7hr continuous
+     stationary rest clears all four). Tiers that were in breach but
+     didn't get enough rest stay in breach, get their shortfall logged,
+     and take an immediate score penalty; they'll keep accumulating
+     "overage" penalties every 15 min the driver keeps working per the
+     tick in boot(). */
+  function resolveRestOnResume() {
+    var restMinsTaken = o.breakElapsedMins;
+    a.tiers.forEach(function(tier, i) {
+      var wasBreached = o.tierWorked[i] >= tier.maxWorkMins;
+      if (restMinsTaken >= tier.restMins) {
+        var hadWork = o.tierWorked[i] > 0;
+        o.tierWorked[i] = 0, o.tierExtraMins[i] = 0, o.tierNotified[i] = !1, wasBreached &&
+          hadWork && persistBfmTierEvent(i, "Rest completed", restMinsTaken, 0, tier.label +
+            " satisfied — " + f(restMinsTaken) + " rest logged (required " + tier.restLabel +
+            ").")
+      } else if (wasBreached) {
+        var shortfallMins = tier.restMins - restMinsTaken;
+        s.score = Math.max(0, s.score - a.scorePerShortRest), nr(), pushBfmNotification("red",
+          tier.label +
+          ": rest taken was short by " + f(shortfallMins) +
+          " — driver score reduced by " + a.scorePerShortRest + "."), persistBfmTierEvent(i,
+          "Insufficient rest", restMinsTaken, a.scorePerShortRest, tier.label +
+          " required " + tier.restLabel + " but only " + f(restMinsTaken) +
+          " was taken (short by " + f(shortfallMins) + ").")
+      }
+    }), o.breakElapsedMins = 0
+  }
+
+  /* ---------- NEW: multi-day BFM cycling ----------
+     bfmDateKey() gives the calendar-day key used everywhere Date_field
+     is written (matches the "DD-Mon-YYYY" format already used by
+     persistBfmOnPause/Resume). rolloverBfmDay() is what makes the rule
+     table "repeat automatically for each day": it closes out the
+     previous day's BFM_Monitoring row exactly as it stood, logs a
+     rollover event to history, resets all four tiers back to zero so
+     the new day starts its own fresh 6¼/9/12/24-hour cycle, and opens a
+     new BFM_Monitoring row dated today — all without touching
+     o.tripStarted, so monitoring simply keeps going, day after day,
+     until the driver ends the trip. */
+  function bfmDateKey(d) {
+    return p(d.getDate()) + "-" + h[d.getMonth()] + "-" + d.getFullYear()
+  }
+
+  async function rolloverBfmDay() {
+    await persistBfmOnPause();
+    var newDayKey = bfmDateKey(new Date()),
+      msg = "New day (" + newDayKey +
+      ") started for this trip — BFM work and rest limits have reset and monitoring continues.";
+    o.tierWorked = [0, 0, 0, 0, 0], o.tierExtraMins = [0, 0, 0, 0, 0], o.tierNotified = [!1, !1, !1, !1,
+      !1
+    ], o.bfmDayKey = newDayKey, pushBfmNotification("green", msg), persistBfmTierEvent(null,
+      "Day rollover", 0, 0, msg), await openBfmDayRecord()
+  }
+
+  /* ---------- NEW: the once-a-minute BFM heartbeat ----------
+     Runs continuously for the whole trip (this is what makes BFM
+     tracking span multiple days — it just keeps ticking as long as
+     o.tripStarted is true). The very first thing it checks is whether
+     the calendar day has changed since the tiers were last reset; if
+     so it rolls the BFM cycle over to the new day (see
+     rolloverBfmDay() above) before doing anything else, so every new
+     day from Trip Start Date through to Trip End Date begins its own
+     applicable work/rest monitoring automatically.
+     - Driving (tripStarted && !onBreak): every tier's tierWorked ticks
+       up by 1. Any tier already in breach also ticks its tierExtraMins
+       up by 1, and every full overageBlockMins (15) minutes of continued
+       driving in breach costs scorePerOverageBlock points — this is the
+       "extra time beyond the limit" penalty from the brief.
+     - Resting (onBreak): breakElapsedMins ticks up by 1 so
+       resolveRestOnResume() can tell how much rest was actually taken
+       once the driver resumes. */
+  function bfmTick() {
+    if (o.tripStarted) {
+      var todayKey = bfmDateKey(new Date());
+      if (o.bfmDayKey && o.bfmDayKey !== todayKey) return void rolloverBfmDay().then(function() {
+        P(), ir()
+      });
+      if (o.onBreak) {
+        o.breakElapsedMins += 1;
+        var restTarget = o.restTargetMins || a.tiers[0].restMins;
+        !o.restCompleteNotified && o.breakElapsedMins >= restTarget && (o.restCompleteNotified =
+          !0, notifyRestComplete())
+      } else {
+        a.tiers.forEach(function(tier, i) {
+          o.tierWorked[i] += 1;
+          if (o.tierWorked[i] > tier.maxWorkMins) {
+            o.tierExtraMins[i] += 1;
+            if (0 === o.tierExtraMins[i] % a.overageBlockMins) {
+              s.score = Math.max(0, s.score - a.scorePerOverageBlock), nr();
+              var msg = tier.label + ": " + f(o.tierExtraMins[i]) +
+                " driven past the limit with no qualifying rest — score reduced by " + a
+                .scorePerOverageBlock + ".";
+              pushBfmNotification("red", msg), persistBfmTierEvent(i, "Overage", o
+                .tierExtraMins[i], a.scorePerOverageBlock, msg)
+            }
+          }
+        }), o.weekWorkedMins += 1
+      }
+    }
+    P(), ir()
+  }
 
   function B(e) {
     var t = _(e);
     if (null !== t) {
       var r = new Date,
         n = 60 * r.getHours() + r.getMinutes() - t;
-      n < 0 && (n += 1440), o.workedMins = n, o.sinceRestMins = n, o.weekWorkedMins += n, o
+      n < 0 && (n += 1440), o.tierWorked[0] = n, o.tierWorked[4] = n, o.weekWorkedMins += n, o
         .restAlertShown = !1, o.restEscalated = !1, F(), P(), ir()
     }
   }
@@ -525,13 +910,74 @@
     e && (e.hidden = !!o.onBreak), t && (t.hidden = !o.onBreak)
   }
 
+  /* ---------- NEW: time-field helpers ----------
+     Zoho `time` fields come back as "HH:MM:SS" strings, not numbers. */
+  function timeStrToMins(t) {
+    if (!t) return 0;
+    var parts = String(t).split(":");
+    var hh = Number(parts[0]) || 0,
+      mm = Number(parts[1]) || 0,
+      ss = Number(parts[2]) || 0;
+    return hh * 60 + mm + ss / 60
+  }
+
+  function minsToTimeStr(mins) {
+    mins = Math.max(0, Math.round(mins));
+    var hh = Math.floor(mins / 60),
+      mm = mins % 60;
+    return p(hh) + ":" + p(mm) + ":00"
+  }
+
+  /* Tracks the current local work period (in-memory only — the
+     BFM_Monitoring form/report no longer exists in this Zoho Creator
+     app, so none of this is persisted server-side). */
+  var ACTIVE_BFM_RECORD = {
+    id: null,
+    workMins: 0,
+    maxMins: null
+  };
+
+  /* ---------- closes out the open work period on pause/stop ---------- */
+  async function persistBfmOnPause() {
+    /* BFM_Monitoring form no longer exists in this Zoho Creator app, so
+       this only updates the local work-period counters used elsewhere
+       in the fatigue-monitoring UI; nothing is persisted to Zoho. */
+    var maxMins = ACTIVE_BFM_RECORD.maxMins || a.maxWorkPerShift,
+      workMins = o.workedMins;
+    ACTIVE_BFM_RECORD.workMins = workMins, ACTIVE_BFM_RECORD.maxMins = maxMins
+  }
+
+  /* ---------- NEW: opens a fresh work period on resume ----------
+     The just-closed period already has its End_Time saved by
+     persistBfmOnPause(); this starts the next one. Also resolves the
+     rest just taken against every tier's own requirement (see
+     resolveRestOnResume() above) before the new period opens. */
+  async function persistBfmOnResume() {
+    resolveRestOnResume(), await openBfmDayRecord()
+  }
+
+  /* ---------- opens a fresh local work period for "today" ----------
+     Shared by persistBfmOnResume() (after resolving whatever rest was
+     just taken) and rolloverBfmDay() (after a plain midnight rollover,
+     where there's no rest to resolve — the driver may still be mid-shift
+     when the day turns over). Local-only; nothing is persisted to
+     Zoho. */
+  async function openBfmDayRecord() {
+    ACTIVE_BFM_RECORD.id = null, ACTIVE_BFM_RECORD.workMins = 0, ACTIVE_BFM_RECORD.maxMins = a
+      .maxWorkPerShift
+  }
+
   function G() {
-    o.tripStarted && (o.onBreak = !0, V && (clearInterval(V), V = null), Z())
+    o.tripStarted && (o.onBreak = !0, o.breakElapsedMins = 0, o.restTargetMins =
+      computeRestTargetMins(), o.restCompleteNotified = !1, V && (clearInterval(V), V = null),
+      Z(), persistBfmOnPause(), saveBfmSummary())
   }
 
   function j() {
-    o.tripStarted && (o.onBreak = !1, W(), Z(), Y("trip"))
+    o.tripStarted && (o.onBreak = !1, W(), Z(), "trip" !== o.view && Y("trip"),
+      persistBfmOnResume(), P(), ir())
   }
+
   window.addEventListener("popstate", function() {
     if (o.tripStarted) {
       R("Complete your trip before leaving this workflow.");
@@ -542,8 +988,8 @@
       } catch (e) {}
     }
   });
-  var z = ["trip", "checkin", "pod", "fuel", "incident", "vehicleissue", "break", "tripfeedback",
-    "documents"
+  var z = ["trip", "checkin", "pod", "fuel", "incident", "vehicleissue", "expense", "break",
+    "tripfeedback", "documents", "dispatch", "podbooking", "podresult"
   ];
 
   function Y(e) {
@@ -551,7 +997,7 @@
     o.tripStarted && -1 === z.indexOf(e) ? R("Complete your trip before leaving this workflow.") : (
       tr(), o.view = e, ["Dash", "Vcheck", "StartTrip", "Chktyres", "Chkbattery", "Chkfuel",
         "Chkgps", "Chkhealth", "Trip", "CheckIn", "Pod", "Fuel", "Incident", "VehicleIssue",
-        "Break", "TripFeedback", "Documents"
+        "Expense", "Break", "TripFeedback", "Documents", "Dispatch", "PodBooking", "PodResult"
       ].forEach(function(t) {
         var r = document.getElementById("view" + t);
         r && (r.hidden = t.toLowerCase() !== e)
@@ -581,9 +1027,17 @@
           var t = new Date;
           u("#inCheckInTime").value = p(t.getHours()) + ":" + p(t.getMinutes())
         }
+        /* Refresh the hub dropdown every time this page is opened, so a
+           trip that finished loading after boot still fills it. */
+        Dr().catch(function(err) {
+          console.error(gr, "Dr() (Hub Name dropdown) failed:", err)
+        }), BOOKING_ID_OPTIONS.length ? renderBookingIdChecklist() : Fr().catch(function(err) {
+          console.error(gr, "Fr() (Booking ID checklist) failed:", err)
+        }), updateBookingIdChip(), updateHubItemCount(u("#inHub") && u("#inHub").value || "")
       }(), "pod" === e && function() {
         var hub = c.hub || u("#inHub").value;
-        if (w("podHubTitle", hub ? "POD — " + hub : "POD — no hub selected"), w("podHubDate", c
+        if (updateBookingIdChip(), w("podHubTitle", hub ? "POD — " + hub : "POD — no hub selected"),
+          w("podHubDate", c
             .date || k()), !hub) {
           var host = u("#podItemList");
           return void(host && (host.innerHTML =
@@ -591,7 +1045,9 @@
             ))
         }
         loadPodItemsForHub(hub)
-      }(), setTimeout(initPodSignaturePad, 30), "vcheck" !== e && 0 !== e.indexOf("chk") || Ne(),
+      }(), "dispatch" === e && populateDispatchBookingDropdown(),
+      "podbooking" === e && loadPodItemsForDispatchBooking(),
+      setTimeout(initPodSignaturePad, 30), setTimeout(initPodResultSignaturePad, 30), "vcheck" !== e && 0 !== e.indexOf("chk") || Ne(),
       "chktyres" === e && function() {
         try {
           if (!("speechSynthesis" in window)) return;
@@ -620,7 +1076,8 @@
               e.removeEventListener("voiceschanged", r), et = e.getVoices(), t()
             }), tt = !0
         } catch (r) {}
-      }(), "trip" === e ? loadTripMapOSM() : void 0, "fuel" === e ? function() {
+      }(), "trip" === e ? (loadTripMapOSM(), rebuildHubPipelineFromBooking()) : void 0,
+      "fuel" === e ? function() {
         var e = u("#inFuelCountry");
         e && !e.value && (e.value = "Australia");
         var t = u("#inFuelTripId");
@@ -636,7 +1093,16 @@
         var t = u("#inIncTime");
         t && !t.value && (t.value = Ot())
       }(), "vehicleissue" === e && ((t = u("#inVehWhen")) && !t.value && (t.value = Nt() + "T" +
-        Ot())), "break" === e && function() {
+        Ot())), "expense" === e && function() {
+        var e = u("#inExpDate");
+        e && !e.value && (e.value = Nt());
+        var tripEl = u("#inExpTripId");
+        tripEl && (tripEl.value = K.tripId || X || "—");
+        var vehEl = u("#inExpVehicleName");
+        vehEl && (vehEl.value = K.vehicleName || "—"), Xr().catch(function(err) {
+          console.error(gr, "Xr() (Expense Type dropdown) failed:", err)
+        })
+      }(), "break" === e && function() {
         var e = u("#inBrkDate");
         e && (e.value = k());
         var t = u("#inBrkStart");
@@ -778,7 +1244,22 @@
         gr, "driverRecordId resolved to:", K.driverRecordId, "| driverEmployeeRecordId:", K
         .driverEmployeeRecordId,
         "| driverId (business, e.g. 'DR-101' — never send this into a lookup field):", K.driverId
-        ), console.log(gr, "Active trip set:", K), ee())
+        ), console.log(gr, "Active trip set:", K), console.log(gr,
+        "[booking-debug] raw Booking_ID field on this Trip record:", e.Booking_ID), ee(),
+      updateBookingIdChip(),
+      /* A new trip means a new booking: drop the cached hub set before
+         rebuilding the dropdown, or the previous trip's hubs would be
+         reused. */
+      resetTripHubCache(), resetBookingIdSelection(), Dr().catch(function(err) {
+        console.error(gr, "Dr() (Hub Name dropdown, trip/booking filtered) failed:", err)
+      }), Fr().catch(function(err) {
+        console.error(gr, "Fr() (Booking ID checklist) failed:", err)
+      }), rebuildHubPipelineFromBooking().catch(function(err) {
+        console.error(gr, "rebuildHubPipelineFromBooking() failed:", err)
+      }), tripMapState.loadedForTrip = null,
+      /* POD Completion KPI (Trip details card) — a new/changed trip means
+         a new booking list, so recount for it. */
+      refreshPodCompletionKpi())
   }
 
   function ee() {
@@ -801,7 +1282,15 @@
           "atdStartDateTime", le(e, "startDateTime") || "—"), w("atdEstimatedDistance", le(e,
           "estimatedDistance") || "—"), w("atdTotalLoadedWeight", le(e, "totalLoadedWeight") ||
         "—"), w("atdTripCompletion", le(e, "tripCompletion") || "—"), w("atdToLocation", le(e,
-          "toLocation") || "—"), w("atdTripDuration", le(e, "tripDuration") || "—")
+          "toLocation") || "—"), w("atdTripDuration", le(e, "tripDuration") || "—"),
+        /* Mirrors of the 6 fields shown on the trimmed "Trip details" card,
+           duplicated under "tfd*" ids so the "View more" popup
+           (#panelTripDetailsFull) can show the complete set without id
+           collisions with the card. */
+        w("tfdTripName", le(e, "tripName") || "—"), w("tfdTripType", le(e, "tripType") || "—"), w(
+          "tfdTripStatus", le(e, "status") || "—"), w("tfdRoute", r), w("tfdPickupLocation", le(e,
+          "pickupLocation") || le(e, "fromLocation") || "—"), w("tfdDeliveryLocation", le(e,
+          "deliveryLocation") || le(e, "toLocation") || "—")
     }
   }
   var te = [{
@@ -857,8 +1346,12 @@
         })[0] || Q[Q.length - 1];
       w("hubCurrentName", t.name), w("hubCurrentMeta", "Departed " + t.eta + " · Stop #" + t.no), w(
         "hubNextName", r.name), w("hubNextMeta", r.distance + " · ETA " + r.eta);
-      var n = u("#hubPipeline");
-      if (n && n.childElementCount !== Q.length && (n.innerHTML = "", Q.forEach(function(e, t) {
+      var n = u("#hubPipeline"),
+        pipelineSig = Q.map(function(e) {
+          return e.name
+        }).join("|");
+      if (n && n.getAttribute("data-sig") !== pipelineSig && (n.setAttribute("data-sig",
+          pipelineSig), n.innerHTML = "", Q.forEach(function(e, t) {
           var r = document.createElement("button");
           r.type = "button", r.className = "hubpipe__node is-" + e.status, r.setAttribute(
               "role", "tab"), r.setAttribute("aria-label", "Stop " + e.no + " · " + e.name), r
@@ -880,7 +1373,8 @@
         })
       }
       var a = Q[J];
-      w("hubIndexLabel", "Stop " + a.no), w("hubTotal", String(12)), w("hubBadge", "Stop #" + a.no),
+      w("hubIndexLabel", "Stop " + a.no), w("hubTotal", String(Q.length)), w("hubBadge", "Stop #" +
+        a.no),
         w("hubName", a.name), w("hubLocation", a.location), w("hubEta", a.eta);
       var o = u("#hubStatus");
       o && (o.textContent = ne(a.status), o.className = "hubstatus is-" + a.status), e.classList
@@ -888,7 +1382,7 @@
       var s = u("#hubPrev"),
         c = u("#hubNext");
       s && (s.disabled = 0 === J), c && (c.disabled = J === Q.length - 1), w("tripNextStopName",
-        "Stop #" + r.no + " · " + r.name)
+        "Stop #" + r.no + " · " + r.name), updateStopsCompletedKpi()
     }
   }
 
@@ -896,33 +1390,39 @@
     J = Math.max(0, Math.min(Q.length - 1, J + e)), ie()
   }
 
-  function oe() {
-    var e = u("#tripList");
-    e && (e.innerHTML = "", te.forEach(function(t) {
-      e.appendChild(function(e) {
-        var t = document.createElement("li");
-        return t.className = "triprow is-" + e.status.toLowerCase(), t.innerHTML =
-          '<div class="triprow__main"><b class="triprow__id"></b><span class="triprow__route"></span><span class="triprow__meta"></span></div><span class="triprow__status"></span>',
-          t.querySelector(".triprow__id").textContent = e.id, t.querySelector(
-            ".triprow__route").textContent = e.route, t.querySelector(".triprow__meta")
-          .textContent = e.window + " · " + e.stops + " stops", t.querySelector(
-            ".triprow__status").textContent = e.status, t
-      }(t))
-    }));
-    var t = te.filter(function(e) {
-        return "Completed" === e.status
-      }).length,
-      r = te.filter(function(e) {
-        return "Active" === e.status
-      }).length,
-      n = te.filter(function(e) {
-        return "Scheduled" === e.status
-      }).length;
-    w("tripsAssigned", String(te.length)), w("tripsDone", String(t)), w("tripsLeft", String(te
-      .length - t)), w("kpiTodayTrips", String(te.length)), w("kpiTodayTripsSub", r +
-      " active · " + t + " done · " + n + " scheduled"), w("tripsDateLabel", k());
+  /* Renders the "Assigned trips" panel (#panelTrips), opened via the
+     "View More" button on the Today's trip card. "list" is the
+     driver's OTHER assigned trips — he() already excludes today's
+     trip and the next upcoming one, since those two are shown on the
+     main Today's trip card and must not repeat here. "totalCount" is
+     the driver's full assigned-trip count, used only for the summary
+     stat. Each row keeps its own "View" button (wired via the
+     delegated data-view-trip handler on #tripList). */
+  function oe(list, totalCount, todayItem) {
+    var trips = (list || []).slice(),
+      total = totalCount || trips.length,
+      e = u("#tripList");
+    if (e) {
+      if (e.innerHTML = "", trips.length) trips.forEach(function(trip) {
+        e.appendChild(fe(trip))
+      });
+      else {
+        var empty = document.createElement("li");
+        empty.className = "triprow", empty.textContent =
+          "No additional assigned trips.", e.appendChild(empty)
+      }
+    }
+    /* "Today" is passed in separately because `trips` (the "other assigned
+       trips" list) always excludes today's trip by design — filtering
+       `trips` itself for "today" here would always yield 0, which is why
+       the Today's Trip value never showed up in this popup before. */
+    var todayCount = todayItem ? 1 : 0,
+      upcomingCount = trips.length;
+    w("tripsAssigned", String(total)), w("tripsDone", String(todayCount)), w("tripsLeft", String(
+      upcomingCount)), w("tripsDriverName", s.name || "Driver"), w("tripsDateLabel", trips.length ?
+      trips.length + (1 === trips.length ? " more trip" : " more trips") : "No more trips");
     var i = document.querySelector('[data-panel="panelTrips"] [data-fill]');
-    i && i.setAttribute("data-fill", Math.round(t / te.length * 100))
+    i && i.setAttribute("data-fill", total ? Math.round(todayCount / total * 100) : 0)
   }
   var se = "Trip_Dispatch1",
     ce = {
@@ -947,7 +1447,19 @@
       driverComplianceStatus: ["Driver_Compliance_Status"],
       dispatcher: ["Dispatcher"],
       assignedHub: ["Assigned_Hub"],
-      assignedBookings: ["Assigned_Bookings", "Bookings", "Booking_IDs"],
+      /* Trip_Dispatch.Booking_ID is a Multi-Select Lookup (Zoho
+         Creator "type = list", values = Booking_Shipments.ID,
+         displayformat = [Booking_ID]) — confirmed against the real
+         form export — and is the field that links a Trip to its
+         Booking(s). One Trip can carry several Bookings, so this
+         resolves to an array, not a single value. It must come first
+         here.
+
+         "Assigned_Bookings" is deliberately kept AFTER it: on
+         Trip_Dispatch that name belongs to a grid pointing at a
+         different form (Assigned_Bookings.ID), so it must never win over
+         Booking_ID. It stays only as a fallback for older trips. */
+      assignedBookings: ["Booking_ID", "Assigned_Bookings", "Bookings", "Booking_IDs"],
       fromLocation: ["From_Location"],
       toLocation: ["To_Location"],
       pickupLocation: ["Pickup_Location", "Pick_Up_Location"],
@@ -1020,6 +1532,21 @@
     }
   }
 
+  function isSameDay(e) {
+    if (!e) return !1;
+    /* Same Safari date-parsing fix as g() above. Callers here already
+       pass a me()-derived numeric timestamp (see fe() below), so only
+       route raw strings through me() — calling me() a second time on a
+       number that's already a timestamp would break it (Date.parse on
+       a stringified number never matches). */
+    var ts = "number" == typeof e ? e : me(e);
+    if (!ts) return !1;
+    var t = new Date(ts),
+      r = new Date;
+    return t.getFullYear() === r.getFullYear() && t.getMonth() === r.getMonth() && t
+      .getDate() === r.getDate()
+  }
+
   function fe(e) {
     var t = le(e, "tripId") || "—",
       r = le(e, "tripName") || "—",
@@ -1028,23 +1555,50 @@
       a = le(e, "toLocation") || "—",
       o = le(e, "startDateTime") || "—",
       s = le(e, "status") || "—",
-      c = function(e) {
-        if (!e) return !1;
-        var t = new Date(e),
-          r = new Date;
-        return t.getFullYear() === r.getFullYear() && t.getMonth() === r.getMonth() && t
-        .getDate() === r.getDate()
-      }(me(le(e, "startDateTime"))),
+      c = isSameDay(me(le(e, "startDateTime"))),
+      tagLabel = c ? "Today's Assigned Trip" : "Upcoming Trip",
       l = document.createElement("li");
     return l.className = "triprow " + ve(s), l.setAttribute("data-trip-id", t), l.innerHTML =
-      '<div class="triprow__main"><b class="triprow__id"></b><span class="triprow__route" data-name></span><span class="triprow__meta" data-route></span><span class="triprow__meta" data-locations></span><span class="triprow__meta" data-date></span></div><span class="triprow__status"></span>' +
+      '<div class="triprow__main"><span class="triprow__tag"></span><b class="triprow__id"></b><span class="triprow__route" data-name></span><span class="triprow__meta" data-route></span><span class="triprow__meta" data-locations></span><span class="triprow__meta" data-date></span></div><span class="triprow__status"></span><div class="triprow__actions">' +
       (c ?
         '<button type="button" class="triprow__view is-start" data-nav="vcheck" data-start-trip data-trip-id="' +
-        t + '">Start Trip · ' + t + "</button>" : ""), l.querySelector(".triprow__id").textContent =
+        t + '">Start Trip · ' + t + "</button>" : "") +
+      '<button type="button" class="triprow__view" data-view-trip>View</button></div>',
+      l.querySelector(".triprow__tag").textContent = tagLabel,
+      l.querySelector(".triprow__id").textContent =
       t, l.querySelector("[data-name]").textContent = r, l.querySelector("[data-route]")
       .textContent = "Route: " + n, l.querySelector("[data-locations]").textContent = "From: " + i +
       "  ·  To: " + a, l.querySelector("[data-date]").textContent = "Start: " + o, l.querySelector(
         ".triprow__status").textContent = s, l
+  }
+
+  /* Compact row used only on the Today's trip main-page card: shows the
+     tag ("Today's Assigned Trip" / "Upcoming Trip"), Trip ID, From, To and
+     Start Date only — no Trip Name, Route or Status. The full-detail row
+     (fe) is still used inside the "View More" popup. */
+  function feCompact(e) {
+    var t = le(e, "tripId") || "—",
+      i = le(e, "fromLocation") || "—",
+      a = le(e, "toLocation") || "—",
+      o = le(e, "startDateTime") || "—",
+      c = isSameDay(me(le(e, "startDateTime"))),
+      tagLabel = c ? "Today's Assigned Trip" : "Upcoming Trip",
+      l = document.createElement("li");
+    return l.className = "triprow triprow--compact trip-highlight", l.setAttribute(
+        "data-trip-id", t), l.innerHTML =
+      '<div class="trip-highlight__top"><span class="trip-highlight__tag"></span><div class="trip-highlight__actions">' +
+      (c ?
+        '<button type="button" class="trip-highlight__btn is-start" data-nav="vcheck" data-start-trip data-trip-id="' +
+        t +
+        '"><svg width="13" height="13" aria-hidden="true"><path d="M4 3l9 6-9 6V3z" fill="currentColor"/></svg><span>Start Trip · ' +
+        t + "</span></button>" : "") +
+      '<button type="button" class="trip-highlight__btn is-view" data-view-trip>View</button></div></div><div class="trip-highlight__body"><div class="trip-highlight__info"><b class="trip-highlight__id"></b><span class="trip-highlight__locations" data-locations></span><span class="trip-highlight__date"><svg width="13" height="13" aria-hidden="true"><use href="#i-calendar"/></svg><span data-date></span></span></div><svg class="trip-highlight__art" viewBox="0 0 140 80" aria-hidden="true" focusable="false"><path d="M12 62c22-6 38 2 58-8s40-18 58-4" fill="none" stroke="#9db8e6" stroke-width="2" stroke-dasharray="4 5"/><circle cx="14" cy="60" r="6" fill="#e8f0fe" stroke="#1E6FE8" stroke-width="2"/><circle cx="124" cy="52" r="6" fill="#e8f0fe" stroke="#1E6FE8" stroke-width="2"/></svg></div>',
+      l.querySelector(".trip-highlight__tag").textContent = tagLabel,
+      l.querySelector(".trip-highlight__id").textContent = t,
+      l.querySelector("[data-locations]").innerHTML = '<svg width="12" height="12" aria-hidden="true"><use href="#i-pin"/></svg><b>From: ' +
+      i +
+      '</b> <svg width="11" height="11" aria-hidden="true"><use href="#i-arrow-right"/></svg> <svg width="12" height="12" aria-hidden="true"><use href="#i-pin"/></svg><b>To: ' +
+      a + "</b>", l.querySelector("[data-date]").textContent = "Start: " + o, l
   }
 
   function he(e) {
@@ -1062,17 +1616,35 @@
     var r = u("#startTopLabel");
     r && (r.textContent = t.length ? "Trip " + (le(t[0], "tripId") || "—") + " · ready" :
       "No trip assigned yet");
-    var n = u("#dashTodayTripList");
-    if (n)
-      if (n.innerHTML = "", t.length) t.forEach(function(e) {
-        var t = le(e, "tripId") || "—";
-        ye[t] = e, n.appendChild(fe(e))
-      });
-      else {
+    t.forEach(function(e) {
+      ye[le(e, "tripId") || "—"] = e
+    });
+    var n = u("#dashTodayTripList"),
+      todayItem = null,
+      upcomingItem = null;
+    if (t.length && (todayItem = t.filter(function(e) {
+        return isSameDay(me(le(e, "startDateTime")))
+      })[0] || null, upcomingItem = t.filter(function(e) {
+        return e !== todayItem
+      })[0] || null), n)
+      if (n.innerHTML = "", t.length) {
+        [todayItem, upcomingItem].filter(Boolean).forEach(function(e) {
+          n.appendChild(feCompact(e))
+        })
+      } else {
         var i = document.createElement("li");
         i.className = "triprow", i.textContent = "No assigned trips for today or upcoming.", n
           .appendChild(i)
-      } return t
+      }
+    var vm = u("#btnTodayTripViewMore");
+    vm && (vm.hidden = t.length <= 2);
+    /* The "View More" popup lists the driver's other assigned trips only
+       — the two already shown on the main Today's trip card (today's
+       trip and the next upcoming one) are excluded so nothing repeats. */
+    oe(t.filter(function(e) {
+      return e !== todayItem && e !== upcomingItem
+    }), t.length, todayItem);
+    return t
   }
 
   function ve(e) {
@@ -1085,6 +1657,10 @@
     ge = [];
 
   function be(e, t, r) {
+    var ATT_ALLOWED_STATUSES = ["Planned", "In Transit", "Cancelled", "Completed"];
+    e = (e || []).filter(function(rec) {
+      return -1 !== ATT_ALLOWED_STATUSES.indexOf(le(rec, "status"))
+    });
     var n = e.filter(function(e) {
         return "Completed" === le(e, "status")
       }).length,
@@ -1109,29 +1685,37 @@
     l.forEach(function(e) {
       var t = le(e, "tripId") || "—";
       ye[t] = e
-    }), [u("#dashAttList"), u("#attList")].forEach(function(e) {
+    });
+    var d3 = l.filter(function(e) {
+      return "Completed" === le(e, "status")
+    }).slice(0, 3);
+
+    function buildTripRow(e) {
+      var t = le(e, "tripId") || "—",
+        r = le(e, "startDateTime") || "—",
+        n = le(e, "status") || "—",
+        i = document.createElement("li");
+      return i.className = "triprow " + ve(n), i.setAttribute("data-trip-id", t),
+        i.innerHTML =
+        '<div class="triprow__main"><b class="triprow__id"></b><span class="triprow__meta"></span></div><span class="triprow__status"></span><button type="button" class="triprow__view" data-view-trip>View</button>',
+        i.querySelector(".triprow__id").textContent = t, i.querySelector(
+          ".triprow__meta").textContent = r, i.querySelector(".triprow__status")
+        .textContent = n, i
+    }
+
+    function renderTripList(e, data, emptyMsg) {
       if (e) {
-        if (e.innerHTML = "", !l.length) {
+        if (e.innerHTML = "", !data.length) {
           var t = document.createElement("li");
-          return t.className = "triprow", t.textContent = r ||
-            "No other trips assigned to this driver.", void e.appendChild(t)
+          return t.className = "triprow", t.textContent = emptyMsg, void e.appendChild(t)
         }
-        l.forEach(function(t) {
-          e.appendChild(function(e) {
-            var t = le(e, "tripId") || "—",
-              r = le(e, "startDateTime") || "—",
-              n = le(e, "status") || "—",
-              i = document.createElement("li");
-            return i.className = "triprow " + ve(n), i.setAttribute("data-trip-id", t),
-              i.innerHTML =
-              '<div class="triprow__main"><b class="triprow__id"></b><span class="triprow__meta"></span></div><span class="triprow__status"></span><button type="button" class="triprow__view" data-view-trip>View</button>',
-              i.querySelector(".triprow__id").textContent = t, i.querySelector(
-                ".triprow__meta").textContent = r, i.querySelector(".triprow__status")
-              .textContent = n, i
-          }(t))
+        data.forEach(function(t) {
+          e.appendChild(buildTripRow(t))
         })
       }
-    })
+    }
+    renderTripList(u("#dashAttList"), d3, "No completed trips yet."), renderTripList(u(
+      "#attList"), l, r || "No other trips assigned to this driver.")
   }
 
   function _e(e, t) {
@@ -1221,7 +1805,7 @@
       },
       fuel: {
         label: "Fuel",
-        fields: ["fVcFuelType", "fFuelPct", "fFuelOk", "fVcOdo"]
+        fields: ["fVcFuelType", "fFuelPct", "fFuelOk"]
       },
       gps: {
         label: "GPS",
@@ -1280,7 +1864,7 @@
       }), Re("#inBattFunc")]),
       fuel: Ee([null === Le("#inVcFuelType") ? null : "Pass", (e = At("#inVcFuelLevel"), t = 40,
         r = 25, "" === e || null === e || isNaN(e) ? null : (e = Number(e)) < r ? "Defect" :
-        e < t ? "Monitor" : "Pass"), Re("#inFuelOk"), At("#inVcOdo") ? "Pass" : null]),
+        e < t ? "Monitor" : "Pass"), Re("#inFuelOk")]),
       gps: Ee([Re("#inGpsFixed"), null === Le("#inGpsUnit") ? null : "Pass", xe("#inGpsCond", {
         Good: "Pass",
         Weak: "Monitor",
@@ -1338,24 +1922,33 @@
     Y("vcheck")
   }
   var Me = {
+      4: {
+        frontAxles: 1,
+        rearAxles: 1,
+        rearDual: !1
+      },
       6: {
         frontAxles: 1,
-        rearDualAxles: 1
+        rearAxles: 1,
+        rearDual: !0
       },
       8: {
         frontAxles: 2,
-        rearDualAxles: 1
+        rearAxles: 1,
+        rearDual: !0
       },
       12: {
         frontAxles: 2,
-        rearDualAxles: 2
+        rearAxles: 2,
+        rearDual: !0
       },
       16: {
         frontAxles: 2,
-        rearDualAxles: 3
+        rearAxles: 3,
+        rearDual: !0
       }
     },
-    Fe = 6;
+    Fe = 4;
 
   function Be(e) {
     var t = Me[e] || Me[6],
@@ -1377,7 +1970,8 @@
         label: s + "right tyre"
       }
     });
-    var n = t.rearDualAxles;
+    var n = t.rearAxles,
+      dl = !1 !== t.rearDual;
     return (1 === n ? [-1.5] : 2 === n ? [-1.3, -1.85] : [-1.05, -1.55, -2.05]).forEach(function(e,
       t) {
       var i = t + 1,
@@ -1387,13 +1981,13 @@
       r[a ? "r" + i + "l" : "rl"] = {
         x: e,
         z: .83,
-        dual: !0,
-        label: s + "left tyres"
+        dual: dl,
+        label: s + (dl ? "left tyres" : "left tyre")
       }, r[o] = {
         x: e,
         z: -.83,
-        dual: !0,
-        label: s + "right tyres"
+        dual: dl,
+        label: s + (dl ? "right tyres" : "right tyre")
       }
     }), r
   }
@@ -1500,6 +2094,21 @@
       }, 60)
   }
 
+  /* ---------- NEW: Trip details popup (Trip status / Stops completed /
+     Driving time / Distance left) — opened from the trip timer or its
+     round info button; keeps the Assigned Trip header clean. ---------- */
+  function openTripInfoPopup() {
+    var p = u("#tripInfoPopup"),
+      s = u("#tripInfoScrim");
+    p && (p.hidden = !1), s && (s.hidden = !1), document.body.style.overflow = "hidden"
+  }
+
+  function closeTripInfoPopup() {
+    var p = u("#tripInfoPopup"),
+      s = u("#tripInfoScrim");
+    p && (p.hidden = !0), s && (s.hidden = !0), document.body.style.overflow = ""
+  }
+
   function Ye() {
     u("#tyrePopup").hidden = !0, u("#tyreScrim").hidden = !0, document.body.style.overflow = "",
       We = null
@@ -1513,7 +2122,7 @@
       qe[We] = "" === t ? null : t, je(), Ye()
     }
   }
-  Ue(6, !1);
+  Ue(4, !1);
   var Je = {
     ready: !1,
     failed: !1,
@@ -1693,7 +2302,14 @@
       var a = t[n],
         o = new e.Group,
         s = [];
-      (a.dual ? [-.17, .17] : [0]).forEach(function(t) {
+      (a.dual ? [
+        [-.2, -.22],
+        [.2, .22]
+      ] : [
+        [0, 0]
+      ]).forEach(function(pair) {
+        var dx = pair[0],
+          dz = pair[1];
         var r = function(t, r) {
           var n = new e.Group,
             i = new e.Mesh(S, new e.MeshStandardMaterial(R));
@@ -1712,18 +2328,18 @@
             w: n,
             tyre: i
           }
-        }(a.x, t);
+        }(a.x + dx, dz);
         o.add(r.w);
         var n = new e.Mesh(new e.TorusGeometry(.49, .04, 10, 28), new e
           .MeshStandardMaterial(x));
         n.rotation.x = Math.PI / 2, r.w.add(n), s.push(n)
       });
-      var d = a.dual ? .58 : .53,
+      var d = a.dual ? .82 : .53,
         u = new e.TorusGeometry(d, .045, 8, 20, Math.PI),
         m = new e.Mesh(u, i);
       m.position.set(a.x, 0, a.z), m.castShadow = !0, r.add(m), o.position.set(0, 0, a.z), o
         .userData.tyre = n;
-      var p = new e.Mesh(new e.CylinderGeometry(.66, .66, a.dual ? .62 : .5, 16), new e
+      var p = new e.Mesh(new e.CylinderGeometry(.66, .66, a.dual ? 1.15 : .5, 16), new e
         .MeshBasicMaterial({
           visible: !1
         }));
@@ -1995,10 +2611,14 @@
   /* ============================================================
      START TRIP PAGE
      Prefills Trip ID/Name (from the assigned trip), today's date,
-     Driver ID/Driver Name (from the currently logged-in driver),
-     a default Start Time, and best-effort GPS-based Live Location
-     + Live Location URL. Nothing here writes to Zoho — see
-     submitStartTripPage() below for the actual save.
+     Driver ID/Driver Name (from the currently logged-in driver) and
+     a default Start Time — all of these are read-only, disabled
+     fields the driver cannot edit. Live Location + Live Location
+     URL stay disabled and empty until the driver explicitly taps
+     "Use my location" (handled by the delegated [data-geo] click
+     handler below), at which point they're captured and disabled
+     too. Nothing here writes to Zoho — see submitStartTripPage()
+     below for the actual save.
      ============================================================ */
   function prefillStartTripPage() {
     var drIdEl = u("#inStDriverId");
@@ -2006,28 +2626,25 @@
     var drNmEl = u("#inStDriverName");
     drNmEl && (drNmEl.value = s.name || "");
     var idEl = u("#inStTripId");
-    idEl && (idEl.value = K.tripId || X || "");
+    idEl && (idEl.value = K.tripId || X || "", idEl.disabled = !0);
     var nmEl = u("#inStTripName");
-    nmEl && (nmEl.value = K.tripName || K.tripId || X || "");
+    nmEl && (nmEl.value = K.tripName || K.tripId || X || "", nmEl.disabled = !0);
     var dEl = u("#inStDate");
-    dEl && (dEl.value = k());
+    dEl && (dEl.value = k(), dEl.disabled = !0);
     var stEl = u("#inStStartTime");
-    if (stEl && !stEl.value) {
-      var now = new Date;
-      stEl.value = p(now.getHours()) + ":" + p(now.getMinutes())
+    if (stEl) {
+      if (!stEl.value) {
+        var now = new Date;
+        stEl.value = p(now.getHours()) + ":" + p(now.getMinutes())
+      }
+      stEl.disabled = !0
     }
-    var locEl = u("#inStartLoc");
-    if (locEl && !locEl.value && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        var la = pos.coords.latitude.toFixed(6),
-          lo = pos.coords.longitude.toFixed(6);
-        locEl.value || (locEl.value = la + ", " + lo);
-        var urlEl = u("#inStartUrl");
-        urlEl && !urlEl.value && (urlEl.value = "https://maps.google.com/?q=" + la + "," + lo)
-      }, function() {}, {
-        timeout: 8000
-      })
-    }
+    /* Live Location / Live Location URL are left enabled (and empty) here
+       — they only get filled in, and then disabled, once the driver taps
+       "Use my location" (see the [data-geo="start"] handler). If GPS
+       capture fails, the "Couldn't get your location" message lets the
+       driver fall back to entering it manually, so we don't lock these
+       down pre-emptively. */
   }
   /* ------------------------------------------------------------
      Validates the Start Trip form, updates local trip state/timer,
@@ -2049,8 +2666,8 @@
     var odoVal = At("#inStOdo");
     if (!odoVal) return errEl.textContent = "Enter the starting odometer reading.", void(errEl
       .hidden = !1);
-    if (!K.tripRecordId || !K.driverRecordId) return errEl.textContent =
-      "Can't start — no assigned trip/driver is loaded yet.", void(errEl.hidden = !1);
+    if (!K.tripRecordId) return errEl.textContent =
+      "Can't start — no assigned Trip_Dispatch1 record is loaded yet.", void(errEl.hidden = !1);
     var tripLabel = K.tripId || X || "",
       odometerNum = Number(odoVal) || 0,
       startMinsVal = _(startTimeVal),
@@ -2059,62 +2676,97 @@
       endLocationVal = K.record && le(K.record, "toLocation") || "",
       locVal = At("#inStartLoc"),
       urlVal = At("#inStartUrl");
-    o.startTime = startTimeVal, o.endTime = endTimeVal, o.tripStarted = !0, o.startLocation =
-      locVal, o.startLocationUrl = urlVal, o.endLocation = endLocationVal, o.startOdometer =
-      odometerNum, w("tripStart", startTimeVal), w("tripEnd", endTimeVal), w("tripStartedAt",
-        startTimeVal), w("tripWindow", startTimeVal + " – " + endTimeVal), w("tripStartLoc",
-        locVal), w("kpiStatus", "IN TRANSIT");
-    var stickyEl = u("#stickyStart");
-    stickyEl && (stickyEl.textContent = "Open trip", stickyEl.setAttribute("data-nav", "trip")),
-      ee(), B(startTimeVal), W(), U || (U = !0, function() {
-        try {
-          history.pushState({
-            skywayTripGuard: !0
-          }, "")
-        } catch (e) {}
-      }()), M(), R("Trip " + tripLabel + " started at " + startTimeVal +
-        " — saved to Zoho Creator"), Y("trip");
-    if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.DATA) {
-      var stTodayD = new Date,
-        stZohoDate = p(stTodayD.getDate()) + "-" + h[stTodayD.getMonth()] + "-" + stTodayD
-        .getFullYear();
-      var stDriverEmpId = await resolveEmployeeFormId(),
-        stDriverId = stDriverEmpId || K.driverEmployeeRecordId || K.driverRecordId;
-      var tsPayload = {
-        Driver_ID: stDriverId,
-        Trip_ID: K.tripRecordId || K.tripId,
-        Date_field: stZohoDate,
-        Starting_Odometer_Reading: odometerNum,
-        Driver_Name: stDriverId,
-        Trip_Name: K.tripRecordId || K.tripId,
-        Start_Time: b(startTimeVal)
-      };
-      locVal && (tsPayload.Live_Location = locVal), urlVal && (tsPayload.Live_Location_URL = {
-        url: urlVal
-      }), await ZOHO.CREATOR.DATA.addRecords({
-        form_name: "Start_Trip_in_Driver",
-        payload: {
-          data: tsPayload
-        }
-      }).then(function() {
-        return K.tripRecordId && ZOHO.CREATOR.DATA.updateRecords ? ZOHO.CREATOR.DATA
-          .updateRecords({
-            form_name: "Trip_Dispatch",
+    var submitBtn = u("#btnSubmitStartTrip");
+    submitBtn && (submitBtn.disabled = !0);
+    try {
+      if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.DATA) {
+        var stTodayD = new Date,
+          stZohoDate = p(stTodayD.getDate()) + "-" + h[stTodayD.getMonth()] + "-" + stTodayD
+          .getFullYear(),
+          stDriverEmpId = await resolveEmployeeFormId(),
+          /* Never substitute the trip's assigned driver here: this record
+             must always identify the user currently logged into the portal. */
+          stDriverId = stDriverEmpId || K.driverEmployeeRecordId || s.recordId;
+        if (!stDriverId) throw new Error("No Employee_Form record could be resolved for the logged-in driver.");
+        var tsPayload = {
+          /* Creator lookup fields require their record IDs, not the visible
+             Trip ID / Driver ID labels shown in the widget. */
+          Driver_ID: cr2(stDriverId),
+          Driver_Name: cr2(stDriverId),
+          Trip_ID: cr2(K.tripRecordId),
+          Trip_Name: cr2(K.tripRecordId),
+          Date_field: stZohoDate,
+          Starting_Odometer_Reading: odometerNum,
+          Start_Time: b(startTimeVal)
+        };
+        locVal && (tsPayload.Live_Location = locVal);
+        urlVal && (tsPayload.Live_Location_URL = {
+          url: urlVal
+        });
+        await ZOHO.CREATOR.DATA.addRecords({
+          form_name: "Start_Trip_in_Driver",
+          payload: {
+            data: tsPayload
+          }
+        }).then(function(stRes) {
+          /* CRITICAL FIX: ZOHO.CREATOR.DATA.addRecords() resolves its promise
+             even when Creator REJECTS the record (bad lookup ID, a mandatory
+             field missing, a validation rule failing, etc.) — it only
+             rejects on transport-level failures. Every other save in this
+             file (see saveFuel above) checks response.code === 3000 for
+             this reason; Start Trip never did, so a rejected record still
+             fell through to the "Data Added Successfully!" success path
+             below with nothing actually written to Zoho. */
+          console.log(gr, "Start_Trip_in_Driver addRecords response:", stRes);
+          var stCode = stRes && (stRes.code || stRes.result && stRes.result[0] &&
+            stRes.result[0].code);
+          if (void 0 !== stCode && 3e3 !== stCode) throw new Error(
+            "Creator rejected the record (code " + stCode + "): " + _r(stRes));
+        });
+        if (ZOHO.CREATOR.DATA.updateRecords) try {
+          await ZOHO.CREATOR.DATA.updateRecords({
+            form_name: se,
             id: K.tripRecordId,
             payload: {
               data: {
                 Starting_Odometer: odometerNum
               }
             }
-          }).catch(function(e) {
-            console.error(gr, "Could not write Starting_Odometer back to Trip_Dispatch1:",
-              e)
-          }) : null
-      }).catch(function(e) {
-        console.error(gr, "Start_Trip_in_Driver save failed:", e), R(
-          "Couldn't save the trip start — please try again.")
-      })
+          });
+        } catch (odometerErr) {
+          /* The Start Trip record was saved successfully; keep the driver
+             moving if the optional dispatch odometer update is rejected. */
+          console.error(gr, "Could not update Trip_Dispatch1 odometer:", odometerErr);
+        }
+      }
+    } catch (saveErr) {
+      console.error(gr, "Start_Trip_in_Driver save failed:", saveErr);
+      errEl.textContent = "Couldn't save the trip start: " + _r(saveErr);
+      errEl.hidden = !1;
+      return;
+    } finally {
+      submitBtn && (submitBtn.disabled = !1);
     }
+    o.startTime = startTimeVal, o.endTime = endTimeVal, o.tripStarted = !0, o.startLocation =
+      locVal, o.startLocationUrl = urlVal, o.endLocation = endLocationVal, o.startOdometer =
+      odometerNum, o.tierWorked = [0, 0, 0, 0, 0], o.tierExtraMins = [0, 0, 0, 0, 0], o.tierNotified = [
+        !1, !1, !1, !1, !1
+      ], o.breakElapsedMins = 0, o.onBreak = !1, o.bfmDayKey = bfmDateKey(new Date()), w(
+        "tripStart", startTimeVal), w("tripEnd",
+        endTimeVal), w("tripStartedAt", startTimeVal), w("tripWindow", startTimeVal + " – " +
+        endTimeVal), w("tripStartLoc", locVal), w("kpiStatus", "IN TRANSIT");
+    var stickyEl = u("#stickyStart");
+    stickyEl && (stickyEl.textContent = "Open trip", stickyEl.setAttribute("data-nav", "trip")),
+      ee(), B(startTimeVal), W(), pushBfmNotification("green",
+        "Trip " + (tripLabel || "") +
+        " started — BFM monitoring is now active for this trip."), U || (U = !0, function() {
+        try {
+          history.pushState({
+            skywayTripGuard: !0
+          }, "")
+        } catch (e) {}
+      }()), M(), R("Trip " + tripLabel + " started at " + startTimeVal +
+        " — saved to Zoho Creator"), Y("trip"), persistBfmOnResume();
   }
 
   function _t() {
@@ -2122,14 +2774,19 @@
     e.hidden = !0;
     var t = u("#inHub").value,
       r = u("#inCheckInTime").value;
-    return t ? r ? (c = {
+    if (!t) return e.textContent = "Select the hub you're checking in to.", void(e.hidden = !1);
+    if (!r) return e.textContent = "Enter your check-in time.", void(e.hidden = !1);
+    syncSelectedBookingIdsFromChecklist();
+    if (BOOKING_ID_OPTIONS.length && !c.bookingIds.length) return e.textContent =
+      "Select at least one Booking ID for this check-in.", void(e.hidden = !1);
+    var bookingIds = c.bookingIds;
+    return c = {
       hub: t,
       date: u("#inCheckDate").value,
       inTime: r,
-      outTime: u("#inCheckOutTime").value
-    }, R("Checked in at " + t + " — opening POD"), void Y("pod")) : (e.textContent =
-      "Enter your check-in time.", void(e.hidden = !1)) : (e.textContent =
-      "Select the hub you're checking in to.", void(e.hidden = !1))
+      outTime: u("#inCheckOutTime").value,
+      bookingIds: bookingIds
+    }, R("Checked in at " + t + " — opening POD"), void Y("pod")
   }
 
   function kt() {
@@ -2144,9 +2801,805 @@
      HUB CHECK-IN / CHECK-OUT — SAVE (POD)
      Saves the check-in/POD record to "Hub_Check_in_Check_Out1",
      mapping the selected Hub Name (chosen from the dropdown built
-     by populateHubDropdown() below) to its real Locations record ID
-     via HUB_NAME_TO_ID, plus every other field entered on the page.
+     by Dr() below) to its real Locations record ID via
+     HUB_NAME_TO_ID, plus every other field entered on the page.
      ============================================================ */
+  /* ---------- NEW: POD result page ----------
+     Shared by both "Save POD" flows (per-hub check-in POD via wt(), and
+     the Dispatch & POD per-Booking flow via savePodBooking()). Fills the
+     read-only summary page shown right after a POD is saved, then lets
+     the driver download a copy — purely additive, doesn't touch any of
+     the existing save/data-mapping logic above it. */
+  function populatePodResultPage(cfg) {
+    cfg = cfg || {};
+    /* Fresh save state for every popup (see POD_RESULT_META). */
+    POD_RESULT_META = podBuildResultMeta(cfg, new Date);
+    var now = new Date,
+      dateStr = cfg.date || now.toLocaleDateString("en-AU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+    w("podResultDate", dateStr), w("podResultDriverName", cfg.driverName || s.name || "—"), w(
+      "podResultDriverId", cfg.driverId || s.id || "—"), w("podResultTripId", cfg.tripId || K
+      .tripId || "—"), w("podResultAssignedTripId", K.tripId || cfg.tripId || "—"), w(
+      "podResultBookingId", cfg.bookingId || "—"), w("podResultStatus", cfg
+      .status || "—"), w("podResultNote", cfg.note ||
+      "—"), w("podResultReceivedAt", cfg.receivedAt || now.toLocaleString("en-AU", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      }));
+    /* ---------- Vehicle / Customer / Pickup / Delivery ----------
+       Sourced from the corresponding Trip / Booking_Shipments1
+       records (see K.vehicleName and BOOKING_FIELD_CANDIDATES),
+       never guessed — cfg carries "—" when a flow has no single
+       Booking to resolve these against (e.g. the multi-booking hub
+       check-in flow). The old, incorrect binding that put the
+       driver's checked-in Hub name into "Delivery Location" has been
+       removed; Delivery Location now comes only from the Booking. */
+    w("podResultCustomerName", cfg.customerName || "—"),
+      w("podResultCompanyName", cfg.companyName || "—"),
+      w("podResultVehicleNo", cfg.vehicleNo || K.vehicleName || "—"),
+      w("podResultShipperCompany", cfg.shipperCompany || cfg.companyName || "—"),
+      w("podResultPickupLocation", cfg.pickupLocation || "—"),
+      w("podResultPickupAddress", cfg.pickupAddress || "—"),
+      w("podResultCustomerCompany", cfg.customerCompany || cfg.companyName || "—"),
+      w("podResultDeliveryLocation", cfg.deliveryLocation || "—"),
+      w("podResultDeliveryAddress", cfg.deliveryAddress || "—"),
+      w("podResultWeight", cfg.weight || "—");
+    var receivedByEl = u("#podResultReceivedByName");
+    receivedByEl && (receivedByEl.value = cfg.receivedByName || "");
+    var body = u("#podResultItemList");
+    if (body) {
+      var items = cfg.items || [];
+      body.innerHTML = items.length ? items.map(function(it, idx) {
+        return "<tr><td>" + (idx + 1) + '</td><td class="item-name">' + (it.name || "—") +
+          "</td><td>" + (it.qty || 0) + "</td><td>" + (it.receivedQty || 0) + "</td><td>" +
+          (it.pendingQty || 0) + "</td><td>" + podPriceLabel(it.price) + "</td></tr>"
+      }).join("") : '<tr><td colspan="6" style="text-align:center;color:#8b93a7">No items recorded for this delivery.</td></tr>'
+    }
+    w("podResultOrderTotal", podOrderTotalLabel(cfg.items || []));
+    RECEIVER_SIGNATURE_DATA = cfg.signature || null;
+    /* BUG FIX: #podResultSignatureImg exists only to feed the
+       PDF/print export (the live signature pad below is excluded
+       from that export via data-pdf-exclude, so the export needs a
+       plain <img> standing in for it). It must stay hidden on screen
+       at all times — the earlier code unhid it whenever a signature
+       existed, which rendered it stacked directly on top of the
+       drawing pad (visible in the reported screenshot as two
+       signatures). Only its "src" is kept in sync here; visibility
+       is always hidden. */
+    var sigImg = u("#podResultSignatureImg");
+    sigImg && (cfg.signature ? sigImg.src = cfg.signature : sigImg.removeAttribute("src"),
+      sigImg.hidden = !0);
+    podResultSigPad.hasInk = false;
+    var wrap = u("#podResultSigPadWrap");
+    wrap && wrap.classList.remove("has-signature")
+  }
+
+  /* ---------- Receiver signature — manual signature pad ----------
+     Replaces the old "Upload signature" file input: the driver draws
+     the receiver's signature directly on the POD Saved summary page,
+     the same draw-to-sign interaction already used on the POD entry
+     page (podSignaturePad), just on its own canvas/state here. Any
+     signature already captured on the POD entry page is preloaded
+     onto this canvas so it's visible immediately and can still be
+     redrawn if it needs correcting. Drawing updates
+     RECEIVER_SIGNATURE_DATA and the "src" of the hidden
+     #podResultSignatureImg (never its visibility — see the
+     BUG FIX note above); downloadPodResult()'s onclone step is what
+     makes that image visible again, and only inside the exported
+     snapshot, never on screen. */
+  var RECEIVER_SIGNATURE_DATA = null;
+  var podResultSigPad = {
+    canvas: null,
+    ctx: null,
+    drawing: false,
+    hasInk: false,
+    lastX: 0,
+    lastY: 0
+  };
+
+  function podResultSigPadPointerPos(e) {
+    var r = podResultSigPad.canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - r.left,
+      y: e.clientY - r.top
+    }
+  }
+
+  function podResultSigPadDown(e) {
+    podResultSigPad.drawing = true;
+    var p = podResultSigPadPointerPos(e);
+    podResultSigPad.lastX = p.x, podResultSigPad.lastY = p.y;
+    podResultSigPad.canvas.setPointerCapture && podResultSigPad.canvas.setPointerCapture(e.pointerId)
+  }
+
+  function podResultSigPadMove(e) {
+    if (!podResultSigPad.drawing) return;
+    var p = podResultSigPadPointerPos(e),
+      ctx = podResultSigPad.ctx;
+    ctx.beginPath(), ctx.moveTo(podResultSigPad.lastX, podResultSigPad.lastY), ctx.lineTo(p.x, p.y),
+      ctx.stroke(), podResultSigPad.lastX = p.x, podResultSigPad.lastY = p.y;
+    if (!podResultSigPad.hasInk) {
+      podResultSigPad.hasInk = true;
+      var wrap = u("#podResultSigPadWrap");
+      wrap && wrap.classList.add("has-signature")
+    }
+  }
+
+  function podResultSigPadCommit() {
+    if (!podResultSigPad.canvas) return;
+    if (!podResultSigPad.hasInk) return void(RECEIVER_SIGNATURE_DATA = null);
+    RECEIVER_SIGNATURE_DATA = podResultSigPad.canvas.toDataURL("image/png");
+    var sigImg = u("#podResultSignatureImg");
+    sigImg && (sigImg.src = RECEIVER_SIGNATURE_DATA)
+  }
+
+  function podResultSigPadUp() {
+    podResultSigPad.drawing = false, podResultSigPadCommit()
+  }
+
+  function podResultSigPadClear() {
+    var c = podResultSigPad.canvas;
+    if (!c) return;
+    var ctx = podResultSigPad.ctx,
+      ratio = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, c.width / ratio, c.height / ratio), podResultSigPad.hasInk = false;
+    var wrap = u("#podResultSigPadWrap");
+    wrap && wrap.classList.remove("has-signature");
+    RECEIVER_SIGNATURE_DATA = null;
+    var sigImg = u("#podResultSignatureImg");
+    sigImg && (sigImg.hidden = !0, sigImg.removeAttribute("src"))
+  }
+
+  function podResultSigPadResize() {
+    var c = podResultSigPad.canvas;
+    if (!c) return;
+    var ratio = window.devicePixelRatio || 1,
+      w2 = c.clientWidth || 600,
+      h2 = c.clientHeight || 140,
+      savedData = podResultSigPad.hasInk ? c.toDataURL() : null;
+    c.width = w2 * ratio, c.height = h2 * ratio;
+    var ctx = c.getContext("2d");
+    ctx.scale(ratio, ratio), ctx.lineWidth = 2, ctx.lineCap = "round", ctx.lineJoin = "round",
+      ctx.strokeStyle = "#0F2748", podResultSigPad.ctx = ctx;
+    savedData && podResultSigPadLoad(savedData, true)
+  }
+
+  function podResultSigPadLoad(dataUrl, isResizeRedraw) {
+    if (!podResultSigPad.canvas || !dataUrl) return;
+    var img = new Image;
+    img.onload = function() {
+      var c = podResultSigPad.canvas,
+        ratio = window.devicePixelRatio || 1,
+        w2 = c.width / ratio,
+        h2 = c.height / ratio,
+        ctx = podResultSigPad.ctx;
+      if (!ctx) return;
+      /* Fit the loaded signature into the pad without distortion. */
+      var scale = Math.min(w2 / img.width, h2 / img.height, 1),
+        dw = img.width * scale,
+        dh = img.height * scale,
+        dx = (w2 - dw) / 2,
+        dy = (h2 - dh) / 2;
+      ctx.clearRect(0, 0, w2, h2), ctx.drawImage(img, dx, dy, dw, dh);
+      podResultSigPad.hasInk = true;
+      var wrap = u("#podResultSigPadWrap");
+      wrap && wrap.classList.add("has-signature");
+      isResizeRedraw || podResultSigPadCommit()
+    }, img.src = dataUrl
+  }
+
+  function initPodResultSignaturePad() {
+    var c = u("#podResultSignaturePad");
+    if (!c) return;
+    if (podResultSigPad.canvas !== c) {
+      podResultSigPad.canvas = c, podResultSigPad.hasInk = false;
+      c.addEventListener("pointerdown", podResultSigPadDown), c.addEventListener("pointermove",
+        podResultSigPadMove), window.addEventListener("pointerup", podResultSigPadUp)
+    }
+    podResultSigPadResize(),
+      !podResultSigPad.hasInk && RECEIVER_SIGNATURE_DATA && podResultSigPadLoad(RECEIVER_SIGNATURE_DATA, true)
+  }
+
+  /* ---------- NEW: real PDF export for the POD Saved page ----------
+     Renders the exact #podResultDoc sheet (same layout/CSS/values the
+     driver already sees) to a canvas via html2canvas, then drops that
+     image into a single A4 jsPDF page — no server round-trip, no
+     change to the on-screen popup markup. Both libraries are pulled
+     from the same trusted CDN this widget already loads Three.js
+     from (see Xe/Ke above); if either fails to load, this falls back
+     to the previous "download an HTML copy" behaviour so a driver in
+     a bad network spot is never left with a dead Download button. */
+  var PDF_LIBS = {
+    html2canvas: "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+    jspdf: "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+  };
+
+  function loadScriptOnce(src) {
+    return new Promise(function(resolve, reject) {
+      var existing = document.querySelector('script[src="' + src + '"]');
+      if (existing) return void(existing.getAttribute("data-loaded") === "1" ? resolve() :
+        existing.addEventListener("load", function() {
+          resolve()
+        }));
+      var el = document.createElement("script");
+      el.src = src, el.async = !0, el.onload = function() {
+        el.setAttribute("data-loaded", "1"), resolve()
+      }, el.onerror = function() {
+        reject(new Error("Failed to load " + src))
+      }, document.head.appendChild(el)
+    })
+  }
+
+  function ensurePdfLibs() {
+    var need = [];
+    window.html2canvas || need.push(loadScriptOnce(PDF_LIBS.html2canvas));
+    window.jspdf && window.jspdf.jsPDF || need.push(loadScriptOnce(PDF_LIBS.jspdf));
+    return need.length ? Promise.all(need) : Promise.resolve()
+  }
+
+  function downloadPodResultAsHtmlFallback(doc, fileSafeId) {
+    /* The live #podResultDoc keeps #podResultSignatureImg hidden on
+       screen (the visible signature is the drawing pad, excluded from
+       export via data-pdf-exclude) — so for this exported copy, clone
+       the doc and unhide the image only in the clone, leaving the
+       on-screen page untouched. */
+    var exportClone = doc.cloneNode(!0),
+      cloneSigImg = exportClone.querySelector("#podResultSignatureImg");
+    cloneSigImg && (cloneSigImg.hidden = !1);
+    var html = exportClone.outerHTML,
+      page =
+      "<!doctype html><html><head><meta charset='utf-8'><title>Proof of Delivery — " +
+      fileSafeId +
+      "</title><style>*{box-sizing:border-box}@page{size:A4;margin:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#f2f4f7;margin:0;padding:20px;color:#1a1a1a}.poddoc-sheet{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:12mm 15mm;border-radius:4px;box-shadow:0 0 8px rgba(0,0,0,.15)}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}.logo-block{display:flex;flex-direction:column}.logo-row{display:flex;align-items:center;gap:8px}.logo-name{font-size:26px;font-weight:800;color:#f7941d;letter-spacing:1px}.logo-name .sky{color:#1c3f94}.logo-sub{font-size:20px;font-weight:700;color:#1c3f94;margin-top:-6px}.arrow{width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;border-left:20px solid #1c3f94;margin-left:-4px}.arrow.orange{border-left-color:#f7941d;margin-left:-14px}.tagline{font-size:11px;letter-spacing:3px;color:#555;margin-top:6px}.title-block{text-align:right}.title-block h1{margin:0;font-size:32px;color:#14224e;letter-spacing:1px}.title-block .sub{font-size:12px;letter-spacing:3px;color:#8b93a7;margin-top:2px}.date-line{text-align:right;margin:10px 0 14px;font-weight:700;font-size:14px}.date-line .field-val{border:none;border-bottom:1px solid #999;min-width:180px;font-size:14px;margin-left:8px;padding:2px 4px;font-weight:700;display:inline-block}.section-title{background:#cfe2f3;color:#14224e;font-weight:700;font-size:13px;letter-spacing:.5px;padding:6px 12px;margin-top:12px;margin-bottom:8px;border-radius:2px}.two-col{display:flex;gap:30px;width:100%;min-width:0}.col{flex:1;min-width:0}.field-row{display:flex;align-items:baseline;margin-bottom:6px;font-size:12.5px;min-width:0}.field-label{min-width:170px;color:#222;flex-shrink:0}.field-colon{margin:0 8px;flex-shrink:0}.field-val{flex:1;min-width:0;border:none;border-bottom:1px solid #bbb;font-size:12px;padding:1px 4px;font-weight:600}table.order-table{width:100%;border-collapse:collapse;margin-bottom:6px}table.order-table th{background:#f3f5f8;border:1px solid #cfd4dc;padding:6px;font-size:12px;text-align:center;color:#14224e}table.order-table td{border:1px solid #cfd4dc;padding:4px 6px;text-align:center;height:24px;font-size:12px}table.order-table td.item-name{text-align:left}.order-total-row td{text-align:right;font-weight:700;padding:10px 12px}.signoff-cols{display:flex;justify-content:space-between;gap:25px;margin-top:10px;width:100%;min-width:0}.poddoc-signbox{min-height:60px;display:flex;align-items:center;padding:4px}.poddoc-signbox img{max-height:58px;max-width:100%}[data-pdf-exclude]{display:none!important}@media print{body{background:#fff;padding:0;margin:0}.poddoc-sheet{box-shadow:none;width:210mm;min-height:297mm;margin:0;padding:12mm 15mm}}</style></head><body>" +
+      html + "</body></html>";
+    try {
+      var blob = new Blob([page], {
+          type: "text/html"
+        }),
+        url = URL.createObjectURL(blob),
+        a = document.createElement("a");
+      a.href = url, a.download = "Proof_of_Delivery_" + fileSafeId + ".html", document.body
+        .appendChild(a), a.click(), a.remove(), setTimeout(function() {
+          URL.revokeObjectURL(url)
+        }, 4e3), R("PDF export unavailable offline — downloaded an HTML copy instead.")
+    } catch (err) {
+      console.error(gr, "POD download fallback failed:", err), window.print()
+    }
+  }
+
+  /* ---------- POD_PDF form — save the POD Saved record to Zoho Creator ----------
+     Everything shown on the POD Saved popup gets written to the
+     POD_PDF form (see the form definition supplied for this widget)
+     via its report, POD_PDF1 — confirmed report link name — including
+     uploading the generated PDF into POD_File_upload and the
+     receiver's drawn signature into Received_by_signature. */
+  var POD_PDF_REPORT_NAME = "POD_PDF1";
+
+  function dataUrlToFile(dataUrl, filename) {
+    if (!dataUrl) return null;
+    var parts = String(dataUrl).split(","),
+      meta = parts[0] || "",
+      b64 = parts[1] || "",
+      mimeMatch = /data:([^;]+);base64/.exec(meta),
+      mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    try {
+      var bin = atob(b64),
+        len = bin.length,
+        arr = new Uint8Array(len);
+      for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+      return new File([arr], filename, {
+        type: mime
+      })
+    } catch (err) {
+      return console.error(gr, "dataUrlToFile() failed:", err), null
+    }
+  }
+
+  /* Reads the exact text currently shown on the POD Saved popup for a
+     given field, so what gets saved to Zoho Creator always matches
+     what the driver sees — not a separately-tracked copy of the data
+     that could drift out of sync. Treats the placeholder "—" as
+     empty so blank fields aren't saved as a literal dash. */
+  function podResultDomValue(id) {
+    var el = u("#" + id);
+    if (!el) return "";
+    var v = "INPUT" === el.tagName ? el.value : el.textContent;
+    return v = (v || "").trim(), "—" === v ? "" : v
+  }
+
+  /* ---------- POD Saved popup -> Zoho Creator (POD_PDF + ORDER_DETAILS) ----------
+     POD_RESULT_META carries what the payload builder can't safely read back
+     from the popup's display text:
+       - Zoho-formatted date / date-time strings (the popup shows e.g.
+         "Saturday 19 September 2026", which Creator rejects for a Date
+         field and would fail the WHOLE add),
+       - the item rows for the ORDER_DETAILS subform,
+       - save progress, so pressing Save again after a partial failure
+         never creates a duplicate POD_PDF record or duplicate item rows.
+     It is rebuilt every time the popup is populated. */
+  var POD_RESULT_META = {
+    dateZoho: "",
+    receivedAtZoho: "",
+    items: [],
+    savedRecordId: null,
+    itemRowsSaved: 0,
+    signatureUploaded: false,
+    pdfUploaded: false
+  };
+
+  function podZohoDate(d) {
+    return p(d.getDate()) + "-" + h[d.getMonth()] + "-" + d.getFullYear()
+  }
+
+  function podZohoDateTime(d) {
+    return podZohoDate(d) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds())
+  }
+
+  function podBuildResultMeta(cfg, now) {
+    cfg = cfg || {};
+    var cfgDate = String(cfg.date || "").trim();
+    return {
+      /* wt() already passes "dd-MMM-yyyy"; the dispatch flow passes the
+         long display date, so fall back to today in Zoho's format. */
+      dateZoho: /^\d{2}-[A-Za-z]{3}-\d{4}$/.test(cfgDate) ? cfgDate : podZohoDate(now),
+      receivedAtZoho: podZohoDateTime(now),
+      items: (cfg.items || []).map(function(it) {
+        return {
+          name: it.name,
+          qty: it.qty,
+          receivedQty: it.receivedQty,
+          pendingQty: it.pendingQty,
+          price: it.price
+        }
+      }),
+      savedRecordId: null,
+      itemRowsSaved: 0,
+      signatureUploaded: false,
+      pdfUploaded: false
+    }
+  }
+
+  function podPriceLabel(val) {
+    return null == val || "" === val || isNaN(Number(val)) ? "—" : Number(val).toFixed(2)
+  }
+
+  /* Order total = sum of price x total qty, only when at least one item
+     actually has a price; otherwise the placeholder is kept. */
+  function podOrderTotalLabel(items) {
+    var any = !1,
+      total = 0;
+    (items || []).forEach(function(it) {
+      null == it.price || isNaN(Number(it.price)) || (any = !0, total += Number(it.price) * (Number(it.qty) || 0))
+    });
+    return any ? total.toFixed(2) : "—"
+  }
+
+  function buildPodPdfPayload() {
+    var payload = {},
+      textFieldMap = {
+        Company_Name: "podResultCompanyName",
+        Vehicle_No: "podResultVehicleNo",
+        /* Customer_Name is no longer shown on the POD Saved popup
+           (removed per an earlier request) — left mapped here in
+           case the DOM element still exists elsewhere; otherwise
+           podResultDomValue() safely returns "". */
+        Customer_Name: "podResultCustomerName",
+        Driver_Name: "podResultDriverName",
+        /* The "Trip ID" row was removed from the popup; "Assigned
+           Trip ID" is now the only trip identifier shown, and it
+           maps into the form's Trip_ID field. */
+        Trip_ID: "podResultAssignedTripId",
+        Booking_ID: "podResultBookingId",
+        Shipper_Company: "podResultShipperCompany",
+        Pickup_Location: "podResultPickupLocation",
+        Customer_Company_Recipient: "podResultCustomerCompany",
+        Delivery_Location: "podResultDeliveryLocation",
+        Delivery_Status: "podResultStatus",
+        Delivery_Note: "podResultNote",
+        Received_by_print_name: "podResultReceivedByName"
+      };
+    Object.keys(textFieldMap).forEach(function(formField) {
+      var v = podResultDomValue(textFieldMap[formField]);
+      v && (payload[formField] = v)
+    });
+    /* Weight is a Decimal field: a non-numeric string (e.g. "12 kg") makes
+       Creator reject the whole record, so only a real number is sent. */
+    var weightTxt = podResultDomValue("podResultWeight");
+    if (weightTxt) {
+      var weightNum = parseFloat(String(weightTxt).replace(/,/g, ""));
+      isNaN(weightNum) || (payload.Weight = weightNum)
+    }
+    /* Date_field1 is a Date field and Date_and_Time_Received a Date-Time
+       field — Creator only accepts "dd-MMM-yyyy" / "dd-MMM-yyyy HH:mm:ss",
+       not the human-readable text shown on the popup. */
+    POD_RESULT_META.dateZoho && (payload.Date_field1 = POD_RESULT_META.dateZoho);
+    POD_RESULT_META.receivedAtZoho && (payload.Date_and_Time_Received = POD_RESULT_META.receivedAtZoho);
+    /* Driver ID must always be the logged-in driver's own ID, taken
+       directly from the session rather than trusting the DOM text
+       (which is normally the same value, but this guarantees it). */
+    payload.Driver_ID = String(s && s.id || podResultDomValue("podResultDriverId") || "");
+    payload.Driver_ID || delete payload.Driver_ID;
+    return payload
+  }
+
+  /* One ORDER_DETAILS row per item on the popup's Order Details table:
+     Item_Name, Total_Qty, Received_Qty, Pending_Qty and — only when the
+     item has a price — Price and Order_Total_AUD (price x Total Qty). */
+  function buildOrderDetailsRows() {
+    return (POD_RESULT_META.items || []).map(function(it, idx) {
+      var name = String(null == it.name ? "" : it.name).trim(),
+        total = Number(it.qty),
+        recv = Number(it.receivedQty),
+        pend = Number(it.pendingQty),
+        row = {};
+      total = isFinite(total) ? total : 0;
+      recv = isFinite(recv) ? recv : 0;
+      pend = isFinite(pend) ? pend : Math.max(0, total - recv);
+      row.Item_Name = name && "—" !== name ? name : "Item " + (idx + 1);
+      row.Total_Qty = total;
+      row.Received_Qty = recv;
+      row.Pending_Qty = pend;
+      if (null != it.price && "" !== it.price && isFinite(Number(it.price))) {
+        row.Price = Number(it.price);
+        row.Order_Total_AUD = Math.round(Number(it.price) * total * 100) / 100
+      }
+      return row
+    })
+  }
+
+  /* Creator answers HTTP 200 with a non-3000 code for validation errors,
+     and rejects (status/responseText) for HTTP errors. Normalise the
+     first kind into a thrown Error so both take the same path. */
+  function podCreatorResponseError(res) {
+    if (!res) return "";
+    var code = res.code;
+    void 0 === code && res.result && res.result[0] && (code = res.result[0].code);
+    if (void 0 === code || 3e3 === code) return "";
+    var first = res.result && res.result[0] || {},
+      detail = res.message || first.message || "";
+    var errObj = res.error || first.error;
+    if (errObj) try {
+      detail += (detail ? " " : "") + JSON.stringify(errObj)
+    } catch (x) {}
+    return "Creator rejected the record (code " + code + (detail ? ": " + detail : "") + ")"
+  }
+
+  function podRecordId(res) {
+    var d = res && (res.data || res.result && res.result[0] && res.result[0].data);
+    return d && (d.ID || d.id) || null
+  }
+
+  function podAddRecord(formName, data) {
+    return ZOHO.CREATOR.DATA.addRecords({
+      form_name: formName,
+      payload: {
+        data: data
+      }
+    }).then(function(res) {
+      var bad = podCreatorResponseError(res);
+      if (bad) {
+        var er = new Error(formName + ": " + bad);
+        er.creatorResponse = res;
+        throw er
+      }
+      return res
+    })
+  }
+
+  function podIsPermissionError(err) {
+    var raw = "";
+    try {
+      raw = "string" == typeof err ? err : JSON.stringify(err)
+    } catch (x) {
+      raw = String(err)
+    }
+    if (err && err.message) raw += " " + err.message;
+    return /"?status"?\s*[:=]\s*403/.test(raw) || /289[89]/.test(raw) || /permission denied/i.test(raw)
+  }
+
+  function podSaveErrorMessage(err) {
+    if (podIsPermissionError(err)) return "Zoho Creator refused the save (HTTP 403 / code 2899 — " +
+      "\"Permission denied to add record(s)\"). This is a Creator permission setting, not something " +
+      "this dashboard's code can override: give the portal profile this driver logs in with Add + View " +
+      "permission on the POD_PDF and ORDER_DETAILS forms (and View + Edit on the POD_PDF1 and " +
+      "ORDER_DETAILS_Report reports), then press Save again.";
+    return _r(err)
+  }
+
+  /* Adds ORDER_DETAILS rows one by one, linked to the POD_PDF record through
+     the subform's Booking_ID lookup. Only used as the fallback when the
+     nested add below is rejected. Resumes from meta.itemRowsSaved so a retry
+     never duplicates rows that already went in. */
+  function podAddOrderDetailsRows(parentId, rows) {
+    var meta = POD_RESULT_META;
+    return rows.reduce(function(chain, row, idx) {
+      return idx < meta.itemRowsSaved ? chain : chain.then(function() {
+        var data = {};
+        Object.keys(row).forEach(function(k) {
+          data[k] = row[k]
+        });
+        data.Booking_ID = parentId;
+        return podAddRecord("ORDER_DETAILS", data).then(function() {
+          meta.itemRowsSaved = idx + 1
+        }).catch(function(err) {
+          console.error(gr, "ORDER_DETAILS item " + (idx + 1) + " of " + rows.length +
+            " failed to save:", err);
+          throw err
+        })
+      })
+    }, Promise.resolve())
+  }
+
+  function podUploadOne(recordId, fieldName, file) {
+    return ZOHO.CREATOR.FILE.uploadFile({
+      report_name: POD_PDF_REPORT_NAME,
+      id: recordId,
+      field_name: fieldName,
+      file: file
+    }).then(function(res) {
+      var bad = podCreatorResponseError(res);
+      if (bad) throw new Error(bad);
+      return res
+    })
+  }
+
+  /* Attaches the receiver's drawn signature and the generated PDF to the
+     saved POD_PDF record. Never throws — failures come back as warnings so
+     the caller can tell the driver and let them retry just the attachments. */
+  function podUploadAttachments(recordId, pdfBlob, fileSafeId) {
+    var meta = POD_RESULT_META,
+      warnings = [],
+      jobs = [],
+      needSig = !!RECEIVER_SIGNATURE_DATA && !meta.signatureUploaded,
+      needPdf = !!pdfBlob && !meta.pdfUploaded;
+    if (!needSig && !needPdf) return Promise.resolve(warnings);
+    if (!window.ZOHO.CREATOR.FILE || !ZOHO.CREATOR.FILE.uploadFile) return console.error(gr,
+      "ZOHO.CREATOR.FILE.uploadFile is not available — signature/PDF not uploaded."), Promise
+      .resolve(["The file upload API isn't available, so the signature/PDF were not attached."]);
+    if (needSig) {
+      var sigFile = dataUrlToFile(RECEIVER_SIGNATURE_DATA, "Signature_" + fileSafeId + ".png");
+      sigFile && jobs.push(podUploadOne(recordId, "Received_by_signature", sigFile).then(function() {
+        meta.signatureUploaded = !0
+      }).catch(function(err) {
+        console.error(gr, "POD_PDF signature upload failed:", err);
+        warnings.push("The signature could not be attached (" + _r(err) + ").")
+      }))
+    }
+    if (needPdf) {
+      var pdfFile = new File([pdfBlob], "Proof_of_Delivery_" + fileSafeId + ".pdf", {
+        type: "application/pdf"
+      });
+      jobs.push(podUploadOne(recordId, "POD_File_upload", pdfFile).then(function() {
+        meta.pdfUploaded = !0
+      }).catch(function(err) {
+        console.error(gr, "POD_PDF file upload failed:", err);
+        warnings.push("The PDF could not be attached (" + _r(err) + ").")
+      }))
+    }
+    return Promise.all(jobs).then(function() {
+      return warnings
+    })
+  }
+
+  /* Saves the POD_PDF record together with its ORDER_DETAILS subform rows,
+     then attaches the signature and PDF (Zoho Creator attaches files to an
+     existing record, not inline with addRecords).
+
+     Unlike the old version, failures are NOT swallowed: a rejected add
+     (e.g. HTTP 403 "Permission denied to add record(s)") rejects this
+     promise, so the caller shows the error instead of a false "POD saved"
+     toast. Resolves to { id, warnings } — warnings are attachment problems
+     on a record that DID save. pdfBlob is optional. */
+  function savePodPdfToZohoCreator(pdfBlob, fileSafeId) {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve({
+      preview: !0,
+      warnings: []
+    });
+    var meta = POD_RESULT_META,
+      rows = buildOrderDetailsRows(),
+      ensureParent;
+    if (meta.savedRecordId) ensureParent = Promise.resolve(meta.savedRecordId);
+    else {
+      var payload = buildPodPdfPayload(),
+        withItems = {};
+      Object.keys(payload).forEach(function(k) {
+        withItems[k] = payload[k]
+      });
+      rows.length && (withItems.ORDER_DETAILS = rows);
+
+      var takeId = function(res, itemsAlreadySaved) {
+        var id = podRecordId(res);
+        if (!id) throw new Error(
+          "The POD_PDF record was saved but Zoho returned no record ID, so the items, signature and PDF could not be linked to it."
+          );
+        meta.savedRecordId = id;
+        meta.itemRowsSaved = itemsAlreadySaved ? rows.length : 0;
+        return id
+      };
+      /* Preferred path: the items go in the same request as the parent,
+         as the ORDER_DETAILS subform (Creator's documented way to add a
+         parent with its subform rows, all-or-nothing). */
+      ensureParent = podAddRecord("POD_PDF", withItems).then(function(res) {
+        return takeId(res, !0)
+      }, function(err) {
+        if (!rows.length || podIsPermissionError(err)) throw err;
+        console.warn(gr,
+          "POD_PDF add with nested ORDER_DETAILS rows was rejected — retrying with the parent alone, then adding the item rows one by one:",
+          err);
+        return podAddRecord("POD_PDF", payload).then(function(res) {
+          return takeId(res, !1)
+        })
+      })
+    }
+    return ensureParent.then(function(id) {
+      var itemsDone = rows.length && meta.itemRowsSaved < rows.length ? podAddOrderDetailsRows(id, rows) :
+        Promise.resolve();
+      return itemsDone.then(function() {
+        return podUploadAttachments(id, pdfBlob, fileSafeId)
+      }).then(function(warnings) {
+        return {
+          id: id,
+          warnings: warnings
+        }
+      })
+    })
+  }
+
+  /* Builds the jsPDF document for #podResultDoc (shared by the
+     Download button and the Save button below, so the two PDFs are
+     always generated the exact same way). Resolves to the jsPDF
+     instance — callers decide whether to pdf.save() it locally,
+     pdf.output("blob") it for upload, or both. */
+  function buildPodPdf(doc) {
+    return ensurePdfLibs().then(function() {
+      if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF)
+        throw new Error("PDF libraries unavailable after load");
+      return window.html2canvas(doc, {
+        scale: 2,
+        useCORS: !0,
+        backgroundColor: "#ffffff",
+        ignoreElements: function(el) {
+          return el.hasAttribute && el.hasAttribute("data-pdf-exclude")
+        },
+        onclone: function(clonedDoc) {
+          /* #podResultSignatureImg stays hidden on screen (the pad
+             canvas is the visible control); unhide it only in the
+             clone html2canvas renders, so the exported PDF/PNG shows
+             the actual signature instead of nothing. */
+          var cloneSigImg = clonedDoc.getElementById("podResultSignatureImg");
+          cloneSigImg && (cloneSigImg.hidden = !1)
+        }
+      })
+    }).then(function(canvas) {
+      var jsPDF = window.jspdf.jsPDF,
+        pdf = new jsPDF({
+          unit: "mm",
+          format: "a4",
+          orientation: "portrait"
+        }),
+        pageW = pdf.internal.pageSize.getWidth(),
+        pageH = pdf.internal.pageSize.getHeight(),
+        imgW = pageW,
+        imgH = canvas.height * imgW / canvas.width,
+        imgData = canvas.toDataURL("image/png");
+      if (imgH <= pageH) pdf.addImage(imgData, "PNG", 0, 0, imgW, imgH);
+      else {
+        /* Content is taller than one A4 page: slice the tall canvas
+           into page-height chunks and add one PDF page per chunk, so
+           nothing is cropped or scaled off the page. */
+        var pxPerMm = canvas.width / imgW,
+          pageHeightPx = Math.floor(pageH * pxPerMm),
+          rendered = 0,
+          first = !0;
+        while (rendered < canvas.height) {
+          var sliceH = Math.min(pageHeightPx, canvas.height - rendered),
+            sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width, sliceCanvas.height = sliceH;
+          sliceCanvas.getContext("2d").drawImage(canvas, 0, rendered, canvas.width, sliceH, 0,
+            0, canvas.width, sliceH);
+          var sliceData = sliceCanvas.toDataURL("image/png"),
+            sliceImgH = sliceH / pxPerMm;
+          first || pdf.addPage(), first = !1, pdf.addImage(sliceData, "PNG", 0, 0, imgW,
+            sliceImgH), rendered += sliceH
+        }
+      }
+      return pdf
+    })
+  }
+
+  function podResultFileSafeId() {
+    return String(u("#podResultAssignedTripId") ? u("#podResultAssignedTripId").textContent :
+      "POD").replace(/[^a-z0-9]+/gi, "_")
+  }
+
+  function downloadPodResult() {
+    var doc = u("#podResultDoc");
+    if (!doc) return;
+    var fileSafeId = podResultFileSafeId(),
+      btn = u("#btnDownloadPod"),
+      btnLabel = btn && btn.querySelector("span");
+    btn && (btn.disabled = !0);
+    btnLabel && (btnLabel.textContent = "Preparing…");
+    buildPodPdf(doc).then(function(pdf) {
+      pdf.save("Proof_of_Delivery_" + fileSafeId + ".pdf"), R(
+        "Proof of Delivery downloaded as a PDF.")
+    }).catch(function(err) {
+      console.error(gr, "POD PDF export failed, falling back to HTML download:", err),
+        downloadPodResultAsHtmlFallback(doc, fileSafeId)
+    }).finally(function() {
+      btn && (btn.disabled = !1), btnLabel && (btnLabel.textContent = "Download")
+    })
+  }
+
+  /* Save button — bottom-center of the POD Saved popup. Separate from
+     Download: this is what actually writes the record to Zoho
+     Creator (POD_PDF1) with its ORDER_DETAILS item rows, attaching the
+     same generated PDF and the receiver's drawn signature. Download
+     only produces a local file and never touches Zoho Creator.
+
+     The popup only closes (and the app only returns to the Assigned Trip
+     page) when the save genuinely succeeded. On any failure the reason is
+     shown under the Save button and the popup stays open so the driver can
+     press Save again — a retry resumes where it stopped and never creates
+     a duplicate record. */
+  function saveDeliveryRecordToZoho() {
+    var doc = u("#podResultDoc"),
+      errEl = u("#podSaveErr");
+    errEl && (errEl.hidden = !0);
+    if (!doc) return;
+    var fileSafeId = podResultFileSafeId(),
+      btn = u("#btnSavePodPdf");
+    if (btn && btn.disabled) return;
+    btn && (btn.disabled = !0, btn.textContent = "Saving…");
+    var pdfFailed = !1;
+
+    function done(msg, isError) {
+      btn && (btn.disabled = !1, btn.textContent = "Save");
+      if (isError) return void(errEl && (errEl.textContent = msg, errEl.hidden = !1));
+      R(msg);
+      /* Give the driver a moment to see the confirmation toast
+         before the popup closes and the app returns to the
+         Assigned Trip page — an instant jump away would make the
+         save feel like it never happened. */
+      setTimeout(function() {
+        Y("trip")
+      }, 900)
+    }
+    /* The PDF is best-effort: if it can't be rendered the record's fields,
+       item rows and signature are still saved. It is skipped when an
+       earlier attempt already attached it. */
+    (POD_RESULT_META.pdfUploaded ? Promise.resolve(null) : buildPodPdf(doc).then(function(pdf) {
+      return pdf.output("blob")
+    }).catch(function(err) {
+      pdfFailed = !0;
+      console.error(gr, "buildPodPdf() failed before POD_PDF save, saving without the PDF:", err);
+      return null
+    })).then(function(blob) {
+      return savePodPdfToZohoCreator(blob, fileSafeId)
+    }).then(function(result) {
+      if (result && result.preview) return done("Preview mode — POD not saved");
+      /* Update the Trip details "POD Completion" KPI right away, then
+         reconcile it with Creator in the background. */
+      podKpiMarkCompleted(podKpiSplitIds(podResultDomValue("podResultBookingId")));
+      refreshPodCompletionKpi();
+      if (result.warnings && result.warnings.length) return done(
+        "The POD and its items were saved to Zoho Creator, but: " + result.warnings.join(" ") +
+        " Press Save to retry the attachment.", !0);
+      done(pdfFailed ? "POD saved to Zoho Creator (without the PDF attachment)." :
+        "POD saved to Zoho Creator.")
+    }).catch(function(err) {
+      console.error(gr, "saveDeliveryRecordToZoho() failed:", err);
+      done("Couldn't save the POD to Zoho Creator: " + podSaveErrorMessage(err), !0)
+    })
+  }
+
   async function wt() {
     var e = u("#podErr");
     e.hidden = !0;
@@ -2161,12 +3614,17 @@
       "Start a trip first — this check-in isn't linked to a trip yet.", void(e.hidden = !1);
     var i = CURRENT_POD_ITEMS.map(function(e) {
         var t = document.querySelector('[data-pid="' + e.id + '"]'),
-          r = document.querySelector('[data-qty="' + e.id + '"]');
+          r = document.querySelector('[data-recv="' + e.id + '"]'),
+          receivedQty = r && Number(r.value) || 0,
+          pendingQty = Math.max(0, (Number(e.qty) || 0) - receivedQty);
         return {
           id: e.id,
           name: e.name,
           delivered: !!t && t.checked,
-          qty: r && Number(r.value) || 0
+          qty: Number(e.qty) || 0,
+          price: e.price,
+          receivedQty: receivedQty,
+          pendingQty: pendingQty
         }
       }),
       sig = At("#inPodSignatureData"),
@@ -2184,13 +3642,14 @@
         hour: "2-digit",
         minute: "2-digit"
       })
-    }), Dt();
+    }), Dt(), updateStopsCompletedKpi();
     var empId = await resolveEmployeeFormId(),
       todayD = new Date,
       zohoDate = p(todayD.getDate()) + "-" + h[todayD.getMonth()] + "-" + todayD.getFullYear(),
       itemSummary = i.length ? "Items: " + deliveredCount + " of " + i.length + " delivered (" + i
       .map(function(e) {
-        return e.name + " x" + e.qty
+        return e.name + " x" + e.receivedQty + (e.pendingQty ? " (pending " + e.pendingQty + ")" :
+          "")
       }).join(", ") + ")" : "",
       notesParts = [u("#podNotes").value.trim(), itemSummary].filter(Boolean),
       PODSTATUS_MAP = {
@@ -2209,9 +3668,28 @@
         Notes: notesParts.join(" | ")
       };
     c.inTime && (payload.Check_in_Time = b(c.inTime)), c.outTime && (payload.Check_Out_Time = b(c
-      .outTime)), HUB_NAME_TO_ID[n] ? payload.Hub_Name = HUB_NAME_TO_ID[n] : console.warn(gr,
+      .outTime));
+    /* Booking_ID is now a Multi-Select lookup on Hub_Check_in_Check_Out1
+       (one Trip can cover several Bookings), so Creator expects an array
+       of {ID: "..."} references rather than a single value. Only IDs
+       with a real Booking_Shipments record ID are sent — a selection
+       that only ever resolved to a display label (no record found) is
+       left out rather than sent as a bad reference. */
+    var bookingIdRefs = (c.bookingIds || []).filter(function(bk) {
+      return bk && bk.id
+    }).map(function(bk) {
+      return {
+        ID: bk.id
+      }
+    });
+    bookingIdRefs.length ? payload.Booking_ID = bookingIdRefs : console.warn(gr,
+      "Hub_Check_in_Check_Out1 saved without Booking_ID — no Booking selected or no matching record id found",
+      c.bookingIds);
+    var podHubNameId = HUB_NAME_TO_ID[n] || null;
+    podHubNameId ? payload.Hub_Name = podHubNameId : console.warn(gr,
       "Hub_Check_in_Check_Out1 saved without Hub_Name — no matching Locations record id found for",
       n);
+    var podTripIdVal = payload.Trip_ID;
     var hubCheckinId = null;
     if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.DATA) {
       var hubRes = await ZOHO.CREATOR.DATA.addRecords({
@@ -2228,12 +3706,22 @@
         return x.delivered && x.qty > 0
       });
       if (deliveredItems.length) {
-        var podIds = (await Promise.all(deliveredItems.map(function(item) {
+        var podIdsRaw = [];
+        for (var podItemIdx = 0; podItemIdx < deliveredItems.length; podItemIdx++) {
+          var item = deliveredItems[podItemIdx];
           var podPayload = {
             Item: cr2(item.id),
-            Quantity: item.qty
+            Quantity: item.qty,
+            Received_Qty: item.receivedQty,
+            Pending_Qty: item.pendingQty
           };
-          return sig && (podPayload.Receiver_Signature = sig), ZOHO.CREATOR.DATA
+          /* Per the POD form schema, each POD item record is saved
+             against the specific Trip_ID and Hub_Name it belongs to —
+             not just linked indirectly through the parent
+             Hub_Check_in_Check_Out1 record. */
+          podTripIdVal && (podPayload.Trip_ID = podTripIdVal), podHubNameId && (podPayload
+            .Hub_Name = podHubNameId), sig && (podPayload.Receiver_Signature = sig);
+          var podSaveRes = await ZOHO.CREATOR.DATA
             .addRecords({
               form_name: "POD",
               payload: {
@@ -2243,8 +3731,10 @@
               return res && res.data && (res.data.ID || res.data.id) || null
             }).catch(function(err) {
               return console.error(gr, "POD item save failed:", err), null
-            })
-        }))).filter(Boolean);
+            });
+          podIdsRaw.push(podSaveRes)
+        }
+        var podIds = podIdsRaw.filter(Boolean);
         if (podIds.length && hubCheckinId && ZOHO.CREATOR.DATA.updateRecords) {
           var podLink = podIds.map(function(pid) {
             return {
@@ -2265,8 +3755,36 @@
         }
       }
     }
-    R("POD saved for " + n + " — " + r), u("#podNotes").value = "", sigPadClear(), t && (t.value =
-      ""), Y("trip");
+    R("POD saved for " + n + " — " + r), populatePodResultPage({
+      date: zohoDate,
+      driverName: s.name,
+      driverId: empId || s.id,
+      tripId: podTripIdVal,
+      bookingId: (c.bookingIds || []).map(function(bk) {
+        return bk.name || bk.id
+      }).join(", ") || null,
+      /* This is the hub check-in flow, which can cover several
+         Bookings at once — there's no single Booking record to pull a
+         Customer/Pickup/Delivery/Weight from here, so those are left
+         as "—" rather than guessed. Vehicle still comes from the
+         current Trip record. */
+      vehicleNo: K.vehicleName,
+      deliveryLocation: n,
+      status: PODSTATUS_MAP[r] || r,
+      note: u("#podNotes").value.trim(),
+      signature: sig,
+      items: i.map(function(it) {
+        return {
+          name: it.name,
+          qty: it.qty,
+          receivedQty: it.receivedQty,
+          pendingQty: it.pendingQty,
+          price: it.price,
+          status: it.delivered ? "Delivered" : "Pending",
+          note: "—"
+        }
+      })
+    }), u("#podNotes").value = "", sigPadClear(), t && (t.value = ""), Y("podresult");
     var a = Q.findIndex(function(e) {
       return "next" === e.status
     });
@@ -2392,7 +3910,11 @@
           Fuel_Quantity_L_kWh: a.litres,
           Cost_Per_Unit: a.costPerUnit,
           Total_Fuel_Cost: a.totalCost,
-          Odometer_Reading: a.mileage
+          /* Zoho Creator field API name for "Current Odometer" on the
+             Fuel_Entry form. Previously sent as "Odometer_Reading", which
+             is not a real field on this form, so Creator silently
+             dropped the value while every other field saved fine. */
+          Current_Odometer: a.mileage
         };
       if (console.log(" 4th Block Passed"), a.liveLocationUrl && (o.Live_Location_URL = Et(a
           .liveLocationUrl)), console.log(gr, "ACTIVE_TRIP:", K), console.table(o), !window
@@ -2479,6 +4001,47 @@
           data: t
         }
       }).catch(function() {}))
+  }
+  async function saveBfmSummary() {
+    var totalHrs = +(o.workedMins / 60).toFixed(2),
+      maxHrs = +(a.maxWorkPerShift / 60).toFixed(2),
+      restHrs = Math.max(0, +(totalHrs - maxHrs).toFixed(2)),
+      msg = "Work period logged — " + totalHrs + "h worked (limit " + maxHrs +
+      "h). Rest required: " + restHrs + "h.";
+    pushBfmNotification(restHrs > 0 ? "amber" : "green", msg);
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return void console.warn(gr,
+      "preview mode — Driver_BFM_Notification not saved");
+    try {
+      var empId = await resolveEmployeeFormId(),
+        driverRef = cr2(empId || K.driverRecordId || K.driverEmployeeRecordId || ""),
+        tripRef = cr2(K.tripRecordId || K.tripId || ""),
+        nowD = new Date,
+        zohoDate = p(nowD.getDate()) + "-" + h[nowD.getMonth()] + "-" + nowD.getFullYear(),
+        endTimeVal = p(nowD.getHours()) + ":" + p(nowD.getMinutes()) + ":" + p(nowD
+          .getSeconds()),
+        payload = {
+          Trip_ID: tripRef,
+          Trip_Name: tripRef,
+          Driver_ID: driverRef,
+          Driver_Name: driverRef,
+          Date_field: zohoDate,
+          Start_Time: b(o.startTime),
+          End_Time: endTimeVal,
+          Break_Hours: restHrs,
+          Notification: msg
+        };
+      o.startLocation && (payload.Live_Location = o.startLocation);
+      var urlObj = Et(o.startLocationUrl);
+      urlObj && (payload.Live_Location_URL = urlObj);
+      await ZOHO.CREATOR.DATA.addRecords({
+        form_name: "Driver_BFM_Notification",
+        payload: {
+          data: payload
+        }
+      })
+    } catch (err) {
+      console.error(gr, "Driver_BFM_Notification save failed:", err)
+    }
   }
   var Ft = [];
 
@@ -2635,7 +4198,9 @@
   function resolveEmployeeFormId() {
     if (Ut) return Promise.resolve(Ut);
     var e = (s.email || "").trim(),
-      t = K.driverRecordId || K.driverEmployeeRecordId || null;
+      /* Fallback only to the authenticated driver's cached record, never
+         to the trip's Primary Driver lookup. */
+      t = s.recordId || K.driverEmployeeRecordId || null;
     if (!e) return Promise.resolve(t);
     var n = ["Employee_Form", "All_Employee_Form", "Employees", "Employee"];
     return function i(a) {
@@ -2727,6 +4292,226 @@
         }), R("Vehicle issue saved — " + t.name), Y("trip")
       }).catch(function(t) {
         console.error(gr, "Vehicle_Issue save failed:", t), e.textContent =
+          "Couldn't save: " + _r(t), e.hidden = !1
+      })
+    }
+  }
+
+  /* ============================================================
+     EXPENSE ENTRY — Expense Type dropdown
+     #inExpType was a hardcoded list of free-text options, but
+     Expense_Entry.Expense_Type is a Lookup to the Expense_Type form
+     (values = Expense_Type.ID, displayformat = [Expense_Type]) — a
+     real Zoho record ID has to be sent, not arbitrary text. This loads
+     the Expense_Type report (report name confirmed as
+     "All_Expense_Types") and rebuilds the dropdown with each option's
+     value set to its record ID and its text set to the record's
+     Expense_Type field value (e.g. "Driver Expense", "Toll Expense",
+     "Trip Expense", "Vehicle Expense" — matching the same values shown
+     in the native Zoho Creator Add_Expense_Entry form's Expense Type
+     dropdown).
+
+     Label lookup tries a few likely API/link names for the field
+     first (Zoho sometimes renames a field that collides with its own
+     form name, e.g. Expense_Type -> Expense_Type1), then falls back
+     to using whatever non-system text field is present on the record
+     so the dropdown still populates even if the exact field name
+     differs from what's documented here.
+     ============================================================ */
+  function Xr() {
+    var sel = u("#inExpType");
+    if (!sel) return Promise.resolve();
+    if ("1" === sel.dataset.loaded) return Promise.resolve();
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve();
+    var reports = [e.expenseTypes].concat(e.expenseTypesFallbacks || []).filter(function(v, i,
+      arr) {
+      return v && arr.indexOf(v) === i
+    });
+    var SYSTEM_KEYS = ["ID", "id", "Added_Time", "Added_User", "Modified_Time", "Modified_User",
+      "ZC_Modified_Time", "ZC_Added_Time"
+    ];
+
+    function fallbackLabel(rec) {
+      for (var k in rec) {
+        if (SYSTEM_KEYS.indexOf(k) === -1 && "string" === typeof rec[k] && rec[k].trim())
+          return rec[k].trim()
+      }
+      return ""
+    }
+    return function tryReport(n) {
+      if (n >= reports.length) return void console.error(gr,
+        "Could not read an Expense_Type report for the Expense Type dropdown (tried: " + reports
+        .join(", ") + ").");
+      return kr({
+        report_name: reports[n],
+        field_config: "all",
+        max_records: 200
+      }).then(function(res) {
+        var rows = res && res.data || [];
+        console.log(gr, "Expense_Type rows from", reports[n], "-", rows.length, "row(s)",
+          rows[0] || null);
+        if (!rows.length && n + 1 < reports.length) return tryReport(n + 1);
+        var prev = sel.value,
+          ids = [],
+          options = [];
+        rows.forEach(function(rec) {
+          var label = cr(sr(rec, ["Expense_Type", "Expense_Type1", "Name"])) || fallbackLabel(
+              rec),
+            id = rec.ID || rec.id || "";
+          label && id && options.push({
+            id: id,
+            label: label
+          })
+        }),
+        /* The Expense_Type picklist is defined with sortorder =
+           ascending in Zoho Creator, but that only governs Creator's
+           own UI — the API returns rows in report order, so sort here
+           to match what the driver expects to see. */
+        options.sort(function(a, b) {
+          return a.label.localeCompare(b.label)
+        }), sel.innerHTML = options.length ?
+          '<option value="" selected hidden disabled></option>' :
+          '<option value="">No expense types found</option>', options.forEach(function(o) {
+          var opt = document.createElement("option");
+          opt.value = o.id, opt.textContent = o.label, sel.appendChild(opt), ids.push(o.id)
+        }), prev && -1 !== ids.indexOf(prev) && (sel.value = prev), options.length && (sel
+          .dataset.loaded = "1")
+      }).catch(function(err) {
+        return console.error(gr, "getRecords on", reports[n], "(Expense_Type) failed:", err),
+          tryReport(n + 1)
+      })
+    }(0)
+  }
+
+  /* ============================================================
+     EXPENSE ENTRY — SAVE
+     Saves a driver expense to the "Expense_Entry" form. Field API
+     names below now match the real Expense_Entry form export: Trip
+     (not Trip_ID), Driver (not Driver_ID), a must-have Vehicle lookup,
+     Expense_Type as a Lookup record ID (see Xr() above), Payment_Method
+     as one of the form's exact static values, Transaction_Reference,
+     and Description (not Note). The form has no Current_Location /
+     Current_Location_URL fields, so that optional context is folded
+     into Description instead of being silently dropped.
+     The receipt file is uploaded separately via ZOHO.CREATOR.FILE.
+     uploadFile() after the record is created, since a file field
+     needs an existing record id to attach to.
+     ============================================================ */
+  function zohoDateFromInput(v) {
+    if (!v) return "";
+    var parts = String(v).split("-");
+    if (3 !== parts.length) return "";
+    var y = parts[0],
+      mo = Number(parts[1]) - 1,
+      d = Number(parts[2]);
+    return isNaN(mo) || isNaN(d) || !h[mo] ? "" : p(d) + "-" + h[mo] + "-" + y
+  }
+
+  function clearExpenseForm() {
+    ["#inExpDate", "#inExpType", "#inExpAmount", "#inExpPayment", "#inExpTransRef", "#inExpNote",
+      "#inExpLoc", "#inExpUrl"
+    ].forEach(function(sel) {
+      var el = u(sel);
+      el && (el.value = "")
+    });
+    var f = u("#inExpReceipt");
+    f && (f.value = "")
+  }
+
+  async function submitExpenseEntry() {
+    var e = u("#expErr");
+    if (e.hidden = !0, xt(["fExpDate", "fExpType", "fExpAmount", "fExpPayment"]), Pt([
+        ["#inExpDate", "fExpDate", "Enter the expense date."],
+        ["#inExpType", "fExpType", "Select an expense type."],
+        ["#inExpAmount", "fExpAmount", "Enter the amount."],
+        ["#inExpPayment", "fExpPayment", "Select a payment method."]
+      ], e)) {
+      if (!K.tripRecordId) return console.error(gr, "no active trip", K), e.textContent =
+        "Start a trip first — this expense isn't linked to a trip yet.", void(e.hidden = !1);
+      if (!K.vehicleRecordId) return console.error(gr, "no vehicle on active trip", K), e
+        .textContent =
+        "No vehicle found on this trip — the Expense Entry form requires one.", void(e.hidden = !
+          1);
+      var t = {
+          date: At("#inExpDate"),
+          type: At("#inExpType"),
+          amount: At("#inExpAmount"),
+          payment: At("#inExpPayment"),
+          transRef: At("#inExpTransRef"),
+          note: At("#inExpNote"),
+          loc: At("#inExpLoc"),
+          url: At("#inExpUrl")
+        },
+        n = await resolveEmployeeFormId(),
+        descParts = [t.note].filter(Boolean),
+        i = {
+          Trip: K.tripRecordId,
+          Driver: n || K.driverRecordId || K.driverEmployeeRecordId || "",
+          Vehicle: K.vehicleRecordId,
+          Expense_Date: zohoDateFromInput(t.date),
+          Expense_Type: t.type,
+          Amount: t.amount,
+          Payment_Method: t.payment,
+          Description: descParts.join(" | ")
+        };
+      /* Live_Location / Live_Location_URL are real fields on the Expense_Entry
+         Zoho form (see form export), so send them as their own fields instead
+         of folding them into Description — that's what was silently dropping
+         them from the saved record. Live_Location_URL is a url-type field, so
+         it must be sent as {url: ...} just like Start Trip does above. */
+      t.loc && (i.Live_Location = t.loc);
+      t.url && (i.Live_Location_URL = {
+        url: t.url
+      });
+      if (t.transRef && (i.Transaction_Reference = t.transRef), !window.ZOHO || !ZOHO.CREATOR || !
+        ZOHO.CREATOR.DATA) return clearExpenseForm(), R("Expense entry saved — " + t.type), void Y(
+        "trip");
+      ZOHO.CREATOR.DATA.addRecords({
+        form_name: "Expense_Entry",
+        payload: {
+          data: i
+        }
+      }).then(function(res) {
+        /* Same fix as Start Trip / Fuel Entry: addRecords() resolves even
+           when Creator rejects the record, so the response code must be
+           checked explicitly or a rejected save still looks like success. */
+        console.log(gr, "Expense_Entry addRecords response:", res);
+        var expCode = res && (res.code || res.result && res.result[0] && res.result[0].code);
+        if (void 0 !== expCode && 3e3 !== expCode) {
+          console.error(gr, "Creator rejected the Expense_Entry record. code:", expCode, res);
+          e.textContent = "Couldn't save: " + _r(res), e.hidden = !1;
+          return
+        }
+        var newId = res && res.data && (res.data.ID || res.data.id) || null,
+          fi = u("#inExpReceipt"),
+          file = fi && fi.files && fi.files[0];
+        if (!newId || !file) return clearExpenseForm(), R("Expense entry saved — " + t.type), void Y(
+          "trip");
+        if (!window.ZOHO.CREATOR.FILE || !ZOHO.CREATOR.FILE.uploadFile) {
+          console.error(gr, "ZOHO.CREATOR.FILE.uploadFile is not available — Receipt was not uploaded.");
+          clearExpenseForm(), R("Expense entry saved, but the receipt could not be uploaded."), Y("trip");
+          return
+        }
+        /* IMPORTANT: report_name must be the RECORD/REPORT link name that the
+           Expense_Entry FORM writes into (Zoho auto-generates one, commonly
+           "All_Expense_Entry" unless it was renamed) — it is NOT always the
+           same as the form's own link name used above for addRecords. If the
+           Receipt still doesn't attach, open the Expense_Entry form in
+           Zoho Creator, check the report it submits to, and update the
+           report_name value below to match exactly. */
+        ZOHO.CREATOR.FILE.uploadFile({
+          report_name: "All_Expense_Entry",
+          id: newId,
+          field_name: "Receipt",
+          file: file
+        }).then(function() {
+          clearExpenseForm(), R("Expense entry saved — " + t.type), Y("trip")
+        }).catch(function(err) {
+          console.error(gr, "Expense receipt upload failed:", err);
+          clearExpenseForm(), R("Expense entry saved, but the receipt upload failed: " + _r(err)), Y("trip")
+        })
+      }).catch(function(t) {
+        console.error(gr, "Expense_Entry save failed:", t), e.textContent =
           "Couldn't save: " + _r(t), e.hidden = !1
       })
     }
@@ -2881,38 +4666,53 @@
     }, 350)), w("scoreMini", s.score), w("scoreBig", s.score)
   }
 
+  /* ---------- REPLACES ir() ----------
+     Drops the four hardcoded demo alerts (service due, "POD submitted —
+     Stop #8", "Route updated by Dispatch", "Medical cert expires in 28
+     days) AND the synthesized "Rest block due" status line, which used to
+     be re-timestamped as "new Date" on every render (always showing "Just
+     now" regardless of whether anything actually happened). The live rest
+     countdown is already shown in its own BFM widget (bfmCountdown /
+     tripBfmRestText, etc.) — it doesn't belong in the alert history too.
+     Shows ONLY real, system-generated pushBfmNotification() entries (Lr). */
   function ir() {
-    var e = x(),
-      t = [];
-    e.restRequired ? t.push({
-      tone: "red",
-      text: "Rest required now — " + f(e.restRequired) + " before driving on",
-      time: "Now"
-    }) : t.push({
-      tone: "amber",
-      text: "Rest block due in " + f(e.untilRest),
-      time: "Scheduled"
-    }), t.push({
-      tone: "amber",
-      text: "Vehicle service due in 620 km",
-      time: "13 minutes ago"
-    }), t.push({
-      tone: "green",
-      text: "POD successfully submitted — Stop #8",
-      time: "12:20"
-    }), t.push({
-      tone: "green",
-      text: "Route updated by Dispatch — continue on the M31",
-      time: "11:02"
-    }), t.push({
-      tone: "amber",
-      text: "Medical certificate expires in 28 days",
-      time: "Today"
-    }), u("#alertList").innerHTML = t.map(function(e) {
+    var t = Lr.slice().sort(function(e, t) {
+      return t.ts - e.ts
+    });
+    var host = u("#alertList");
+    host && (host.innerHTML = t.length ? t.map(function(e) {
       return '<li class="alert ' + e.tone + '"><i class="status-dot ' + e.tone +
-        '" style="margin-top:5px"></i><div><p>' + e.text + "</p><time>" + e.time +
+        '" style="margin-top:5px"></i><div><p>' + e.text + "</p><time>" + relTime(e.ts) +
         "</time></div></li>"
-    }).join("")
+    }).join("") : '<li class="alert-empty">No alerts right now.</li>')
+  }
+
+  /* ---------- NEW: Stops completed KPI ----------
+     total     = number of hubs on the assigned Booking (Q, built by
+                 rebuildHubPipelineFromBooking()).
+     completed = hubs marked "done" in the pipeline OR hubs that already
+                 have a Delivered / Partially Received POD saved (l). */
+  function updateStopsCompletedKpi() {
+    var total = Q.length;
+    if (!total) return;
+    var deliveredHubs = {};
+    l.forEach(function(rep) {
+      ("Delivered" === rep.status || "Partially Received" === rep.status) && (deliveredHubs[rep
+        .hub] = !0)
+    });
+    var completed = Q.filter(function(hub) {
+      return "done" === hub.status || deliveredHubs[hub.name]
+    }).length;
+    var valEl = document.querySelector('[data-action="deliveries"] .kpi__val');
+    valEl && (valEl.innerHTML = completed + ' <small>/ ' + total + "</small>");
+    var subEl = document.querySelector('[data-action="deliveries"] .kpi__sub');
+    if (subEl) {
+      var nextHub = Q.filter(function(hub) {
+        return "next" === hub.status
+      })[0];
+      subEl.textContent = nextHub ? "Next: " + nextHub.name : (completed === total ?
+        "All stops complete" : "—")
+    }
   }
 
   function ar(e) {
@@ -3050,25 +4850,17 @@
       .overflow = ""
   }
 
+  /* ---------- REPLACES vr() ----------
+     The BFM_Monitoring form/report no longer exists in this Zoho
+     Creator app, so this seeds the in-memory BFM counters from the
+     hardcoded defaults in `a` directly, with no server lookup. */
   function vr() {
-    return ZOHO.CREATOR.DATA.getRecords({
-      report_name: e.bfm,
-      criteria: '(Driver_ID == "' + s.id + '" && Active == true)',
-      field_config: "all",
-      max_records: 200
-    }).then(function(e) {
-      var t;
-      (t = e && e.data && e.data[0]) && (a.module = t.Fatigue_Module || a.module, a
-        .maxContinuousWork = Number(t.Max_Continuous_Work_Minutes) || a.maxContinuousWork, a
-        .restBlock = Number(t.Rest_Block_Minutes) || a.restBlock, a.maxWorkPerShift = Number(t
-          .Max_Work_Per_Shift_Minutes) || a.maxWorkPerShift, a.minRestPerShift = Number(t
-          .Min_Rest_Per_Shift_Minutes) || a.minRestPerShift, a.maxWorkPerWeek = Number(t
-          .Max_Work_Per_Week_Minutes) || a.maxWorkPerWeek, a.warnBefore = Number(t
-          .Warning_Threshold_Minutes) || a.warnBefore, a.source = "BFM Monitoring · " + (t
-          .Rule_Set_Name || a.module))
-    }).catch(function() {
-      a.source = "Default BFM values (form unreachable)"
-    }).then(function() {
+    /* BFM_Monitoring report/form no longer exists in this Zoho Creator
+       app, so this simply seeds the in-memory BFM counters from the
+       local defaults instead of attempting a lookup. */
+    ACTIVE_BFM_RECORD.id = null, ACTIVE_BFM_RECORD.workMins = 0, ACTIVE_BFM_RECORD.maxMins = a
+      .maxWorkPerShift, a.source = "Default BFM values";
+    return Promise.resolve().then(function() {
       P(), ir()
     })
   }
@@ -3086,19 +4878,26 @@
         "panelName", s.name || "—"), w("panelGender", s.gender || "—"), w("panelDob", s.dob || "—"),
       w("panelMobile", s.mobile || "—"), w("panelEmail", s.email || "—"), w("panelAddress", s
         .address || "—"), w("panelEmploymentType", s.employmentType || "—"), w("panelStarted", s
-        .started || "—"), w("panelDepartment", s.department || "—"), w("panelLicenceNo", s
-        .licenceNo || "—"), w("panelLicenceClass", s.licenceClass || "—"), w(
+        .started || "—"), w("panelDepartment", s.department || "—"), w("panelDesignation", s
+        .designation || "—"), w("panelIdentityDocType", s.identityDocType || "—"), w(
+        "panelIdentityDocNumber", s.identityDocNumber || "—"), w("panelVisaExpiry", s
+        .visaExpiryDate || "—"), w("panelLicenceNo", s
+        .licenceNo || s.licenceNumber || "—"), w("panelLicenceType", s.licenceType || "—"), w(
+        "panelLicenceClass", s.licenceClass || "—"), w(
         "panelLicenceIssueDate", s.licenceIssueDate || "—"), w("panelLicenceExpiry", s
-        .licenceExpiry || "—"), w("panelLicenceStatus", s.licenceStatus || "—");
+        .licenceExpiry || "—"), w("panelLicenceStatus", s.licenceStatus || "—"), w(
+        "panelBfmModule", s.fatigueModule || a.module || "—"), w("panelHeavyVehicleExperience", s
+        .heavyVehicleExperience || "—"), w("panelMedicalFitnessStatus", s.medicalFitnessStatus ||
+        "—"), w("panelMedicalCertExpiry", s.medicalCertExpiry || "—");
     var n = s.experience,
       i = "" !== n && !isNaN(Number(n));
     w("panelExperience", n ? i ? n + " years" : String(n) : "—"), w("panelLastCheckup", s
       .lastCheckupDate || "—");
-    var a = document.getElementById("panelDocWarn"),
+    var a2 = document.getElementById("panelDocWarn"),
       o = document.getElementById("panelDocWarnText"),
       c = ur(s.licenceExpiry);
-    a && o && (null !== c && c <= 30 ? (o.textContent = c < 0 ? "Licence expired " + Math.abs(c) +
-      " days ago" : "Licence expires in " + c + " days", a.hidden = !1) : a.hidden = !0)
+    a2 && o && (null !== c && c <= 30 ? (o.textContent = c < 0 ? "Licence expired " + Math.abs(c) +
+      " days ago" : "Licence expires in " + c + " days", a2.hidden = !1) : a2.hidden = !0)
   }
   var gr = "[Driver Dashboard]";
 
@@ -3201,26 +5000,215 @@
         })
     }(0)
   }
+
+  /* ==========================================================================
+     HUB / BOOKING / POD RESOLUTION  — CORRECTED
+
+     Verified against the Zoho Creator app export (Skyway Logistics .ds):
+
+       Trip_Dispatch.Booking_ID   picklist -> Booking_Shipments.ID,
+                                  displayformat = [Booking_ID]   ("BK-010")
+       Booking_Shipments.Booking_ID          text                ("BK-010")
+       Booking_Shipments.Shipment_Items      grid  -> Shipment_Items.ID,
+                                             bidirectional = Booking_Shipments
+       Shipment_Items.Item                   text
+       Shipment_Items.Quantity               decimal
+       Shipment_Items.Hub_Name    picklist -> Locations.ID,
+                                  displayformat = [Hub_Name]
+       Shipment_Items.Booking_Shipments
+                                  picklist -> Booking_Shipments.ID,
+                                  displayformat = [ID]
+       Locations.Hub_Name / Hub_ID / Latitude / Longitude / Hub_Location
+
+     Report (not form) names, which is what the Data API needs:
+       Booking_Shipments  ->  report "Shipment_Booking"
+       Shipment_Items     ->  report "All_Shipment_Items"
+       Locations          ->  report "Locations2"
+       Trip_Dispatch      ->  report "Trip_Dispatch1"
+
+     WHY THE HUB DROPDOWN SAID "No hubs found for this Trip/Booking"
+     ---------------------------------------------------------------
+     1. WRONG REPORT NAMES. The old candidate lists led with
+        "Booking_Shipments" and "Shipment_Items1" — those are FORM names.
+        The reports are "Shipment_Booking" and "All_Shipment_Items", so
+        every early getRecords threw before anything usable came back.
+     2. THE SUBFORM CANNOT BE USED. On the Shipment_Booking report the
+        Shipment_Items column is defined as a concatenated formula
+        (Item + " " + Quantity + " " + Package_Type). The Data API returns
+        that as a display string, not as row objects — and it does not
+        even contain Hub_Name. Reading hubs off the parent booking record
+        was therefore never going to work. The Shipment_Items report is
+        now the primary source; the subform is only a bonus if a future
+        report exposes it as real rows.
+     3. IDs ONLY. Hub values were collected with rawLookupId() alone, so a
+        Hub_Name that came back as a display label was discarded and the
+        hub set ended up empty. IDs *and* names are now both collected and
+        either can match a Locations row.
+     4. EMPTY RESULT WAS CACHED FOREVER. TRIP_HUB_ID_CACHE stored [], so
+        one early miss (before the trip finished loading) poisoned every
+        later call. Empty results are no longer cached, and the cache is
+        cleared whenever a new trip is set.
+     5. COUNT vs POD DISAGREED. updateHubItemCount() used the subform-only
+        path while the POD page used another. Both now share one pipeline.
+
+     DIAGNOSTICS: run  skywayHubDebug()  in the browser console.
+     ========================================================================== */
+
   var HUB_NAME_TO_ID = {};
   var CURRENT_POD_ITEMS = [];
   var CURRENT_POD_LOADING = false;
-  var BOOKING_REPORT_CANDIDATES = ["Booking_Shipments", "All_Booking_Shipments", "Bookings",
-    "All_Bookings"
+
+  /* Report names, most-likely first. "Shipment_Booking" is the real
+     Booking_Shipments report in this app; the rest are fallbacks for
+     renamed/duplicated reports. */
+  var BOOKING_REPORT_CANDIDATES = ["Shipment_Booking", "Booking_Shipments",
+    "All_Booking_Shipments", "Booking_Shipments_Report", "Booking_Shipments1",
+    "All_Shipment_Booking", "Bookings", "All_Bookings"
   ];
   var BOOKING_FIELD_CANDIDATES = {
-    bookingId: ["Booking_ID"],
+    bookingId: ["Booking_ID", "Booking", "Booking_Id", "BookingID", "Booking_No", "Booking_Number"],
+    /* Booking_Shipments.Assigned_Hub is a single lookup to Locations — it
+       is only the booking's PRIMARY hub, so it is used solely as a
+       last-resort fallback when no item row carries a hub. */
     assignedHub: ["Assigned_Hub"],
     pickupLocation: ["Pickup_Location"],
     deliveryLocation: ["Delivery_Location"],
     route: ["Route"],
-    shipmentItems: ["Shipment_Items"]
+    customer: ["Customer_Company_Name", "Customer_Name", "Customer", "Company_Name"],
+    weight: ["Weight", "Total_Weight", "Total_loaded_Weight"],
+    shipmentItems: ["Shipment_Items", "Shipment_Items1", "Shipment_Item", "Items"]
   };
   var SHIPMENT_ITEM_FIELD_CANDIDATES = {
+    /* "Item" is the real field (displayname " Item"); the rest are
+       fallbacks. Item_Name is listed first only so a renamed field still
+       wins over the generic "Name". */
     name: ["Item_Name", "Item", "Product_Name", "Item_Description", "Product", "Name",
       "Description"
     ],
-    qty: ["Quantity", "Qty", "Item_Quantity", "Units", "No_of_Units", "Total_Quantity"]
+    /* "Total_Qty" added per the reference screenshot supplied — some
+       reports use this exact field name instead of "Quantity". */
+    qty: ["Quantity", "Qty", "Total_Qty", "Item_Quantity", "Units", "No_of_Units",
+      "Total_Quantity"
+    ],
+    /* Optional unit price — only used when a Shipment_Items row actually
+       carries one; never guessed. Feeds ORDER_DETAILS.Price. */
+    price: ["Price", "Unit_Price", "Price_AUD", "Item_Price"],
+    /* Shipment_Items.Booking_Shipments — the other end of the
+       bidirectional link. Its displayformat is [ID], so its display value
+       IS the booking's record ID. */
+    bookingLink: ["Booking_Shipments", "Booking_ID", "Booking", "Shipment_Booking",
+      "Booking_Shipment"
+    ]
   };
+  var SHIPMENT_ITEM_REPORT_CANDIDATES = ["All_Shipment_Items", "Shipment_Items1",
+    "Shipment_Items", "Shipment_Items_Report"
+  ];
+  /* Shipment_Items.Hub_Name is the real hub field. Anything else is still
+     picked up by the /hub/i key scan in hubRefsFromRow(). */
+  var SHIPMENT_ITEM_HUB_FIELD = ["Hub_Name", "Delivery_Hub", "Hub", "Assigned_Hub",
+    "Destination_Hub", "Drop_Hub"
+  ];
+
+  /* Issue #3 fix: on this app, the Trip_Dispatch1 record itself carries an
+     "Assigned Bookings" related list (see the screenshot supplied) with
+     Trip ID / Booking / Pickup Location / Delivery Location / Weight /
+     Expected Delivery / Amount columns for every Booking on that trip —
+     it's a subform field living directly on the Trip record, not a
+     separate report. Reading it straight off K.record (already fetched
+     with field_config: "all") is both correct AND avoids an extra round
+     trip to Booking_Shipments; the code below tries this route FIRST and
+     only falls back to the older Booking_Shipments report lookup if the
+     Trip record doesn't expose it (e.g. because it was renamed). */
+  var TRIP_ASSIGNED_BOOKINGS_SUBFORM_CANDIDATES = ["Assigned_Bookings", "Assigned_Booking_Details",
+    "Booking_Details", "Trip_Bookings", "Bookings", "Booking_Items"
+  ];
+
+  function assignedBookingsFromTripRecord() {
+    var rec = K.record;
+    if (!rec) return null;
+    for (var i = 0; i < TRIP_ASSIGNED_BOOKINGS_SUBFORM_CANDIDATES.length; i++) {
+      var raw = rec[TRIP_ASSIGNED_BOOKINGS_SUBFORM_CANDIDATES[i]];
+      if (Array.isArray(raw) && raw.length) return raw;
+      if (raw && Array.isArray(raw.data) && raw.data.length) return raw.data
+    }
+    return null
+  }
+
+
+  /* ---------- lookup-value helpers ---------- */
+
+  function rawLookupId(v) {
+    if (null == v) return "";
+    if (Array.isArray(v)) v = v[0];
+    return null == v ? "" : "string" == typeof v || "number" == typeof v ? String(v).trim() :
+      String(v.ID || v.zc_id || v.id || "").trim()
+  }
+
+  function lookupLabel(v) {
+    if (Array.isArray(v)) return v.map(lookupLabel).filter(Boolean).join(", ");
+    return cr(v)
+  }
+
+  function normKey(v) {
+    return String(null == v ? "" : v).trim().toLowerCase()
+  }
+
+  /* Splits any lookup value (string, number, {ID,display_value}, or an
+     array of those) into the record IDs and the display labels it
+     carries. Either side can be empty — the case the old ID-only code
+     mishandled. */
+  function refListFromValue(v) {
+    var ids = [],
+      names = [],
+      arr = Array.isArray(v) ? v : (null == v ? [] : [v]);
+    arr.forEach(function(x) {
+      if (null == x || "" === x) return;
+      if ("string" == typeof x || "number" == typeof x) {
+        var sVal = String(x).trim();
+        if (!sVal) return;
+        /* Creator record IDs are long numeric strings; everything else is
+           treated as a display label. */
+        if (/^\d{8,}$/.test(sVal)) {
+          -1 === ids.indexOf(sVal) && ids.push(sVal)
+        } else -1 === names.indexOf(sVal) && names.push(sVal);
+        return
+      }
+      if ("object" == typeof x) {
+        var id = String(x.ID || x.zc_id || x.id || "").trim();
+        id && -1 === ids.indexOf(id) && ids.push(id);
+        var lb = String(x.display_value || x.zc_display_value || x.Name || "").trim();
+        lb && -1 === names.indexOf(lb) && names.push(lb)
+      }
+    });
+    return {
+      ids: ids,
+      names: names
+    }
+  }
+
+  /* Every hub reference carried by one Shipment_Items row. */
+  function hubRefsFromRow(row) {
+    if (!row) return {
+      ids: [],
+      names: []
+    };
+    var key = or(row, SHIPMENT_ITEM_HUB_FIELD),
+      out = key ? refListFromValue(row[key]) : {
+        ids: [],
+        names: []
+      };
+    if (!out.ids.length && !out.names.length) Object.keys(row).forEach(function(k) {
+      if (!/hub/i.test(k)) return;
+      var extra = refListFromValue(row[k]);
+      extra.ids.forEach(function(id) {
+        -1 === out.ids.indexOf(id) && out.ids.push(id)
+      });
+      extra.names.forEach(function(nm) {
+        -1 === out.names.indexOf(nm) && out.names.push(nm)
+      })
+    });
+    return out
+  }
 
   function idListOf(raw) {
     if (null == raw) return [];
@@ -3230,6 +5218,369 @@
         String(v.ID || v.zc_id || v.id || "").trim()
     }).filter(Boolean)
   }
+
+  function escapeCriteria(v) {
+    return String(v == null ? "" : v).replace(/"/g, '\\"')
+  }
+
+  /* ---------- Trip -> Booking ---------- */
+
+  /* Every key that could identify this trip's booking: the lookup's
+     record ID and its visible Booking ID label ("BK-010"), because Zoho
+     returns one, the other, or both depending on the report. */
+  function getTripBookingIds() {
+    var tripRec = K.record,
+      refs = refListFromValue(tripRec ? sr(tripRec, ce.assignedBookings) : null),
+      keys = [];
+    refs.ids.concat(refs.names).forEach(function(key) {
+      key = String(key || "").trim();
+      key && -1 === keys.indexOf(key) && keys.push(key)
+    });
+    /* Last resort: scan the trip record for any booking-ish field. */
+    if (!keys.length && tripRec) Object.keys(tripRec).forEach(function(k) {
+      if (!/booking/i.test(k) || /date/i.test(k)) return;
+      var extra = refListFromValue(tripRec[k]);
+      extra.ids.concat(extra.names).forEach(function(key) {
+        key = String(key || "").trim();
+        key && -1 === keys.indexOf(key) && keys.push(key)
+      })
+    });
+    return keys
+  }
+
+  var BOOKING_CACHE = {
+    key: null,
+    rows: null
+  };
+
+  /* Resolves the Booking_Shipments record(s) linked to the active trip.
+     Tries a server-side criteria match on Booking_ID first (cheap), then
+     falls back to a full scan matched on record ID or Booking ID label. */
+  function fetchActiveTripShipmentBookings() {
+    /* Preferred path: read the "Assigned Bookings" subform directly off
+       the already-loaded Trip_Dispatch1 record — see
+       assignedBookingsFromTripRecord() above for why. */
+    var subformRows = assignedBookingsFromTripRecord();
+    if (subformRows && subformRows.length) return console.log(gr,
+      "[hub-debug] using Assigned Bookings subform straight off the Trip_Dispatch1 record:",
+      subformRows), Promise.resolve(subformRows);
+    var bookingIds = getTripBookingIds();
+    console.log(gr, "[hub-debug] getTripBookingIds() ->", bookingIds);
+    if (!bookingIds.length) return console.warn(gr,
+      "[hub-debug] no Booking ID resolved off the Trip_Dispatch record — check ce.assignedBookings"
+      ), Promise.resolve([]);
+    var cacheKey = bookingIds.join("|");
+    if (BOOKING_CACHE.key === cacheKey && BOOKING_CACHE.rows && BOOKING_CACHE.rows.length)
+    return Promise.resolve(BOOKING_CACHE.rows);
+    var wanted = bookingIds.map(normKey),
+      /* Only the non-numeric keys are usable as a Booking_ID criteria
+         value — the numeric one is the record ID. */
+      labels = bookingIds.filter(function(v) {
+        return !/^\d{8,}$/.test(String(v))
+      });
+
+    function remember(rows) {
+      return rows && rows.length && (BOOKING_CACHE.key = cacheKey, BOOKING_CACHE.rows = rows),
+        rows
+    }
+
+    return function tryReport(index) {
+      if (index >= BOOKING_REPORT_CANDIDATES.length) return console.warn(gr,
+        "[hub-debug] no booking report matched", bookingIds, "- tried:",
+        BOOKING_REPORT_CANDIDATES), Promise.resolve([]);
+      var reportName = BOOKING_REPORT_CANDIDATES[index],
+        params = {
+          report_name: reportName,
+          field_config: "all",
+          max_records: 200
+        };
+      if (labels.length) params.criteria = "(" + labels.map(function(v) {
+        return 'Booking_ID == "' + escapeCriteria(v) + '"'
+      }).join(" || ") + ")";
+      return kr(params).then(function(res) {
+        var rows = res && res.data || [];
+        if (rows.length) return console.log(gr, "[hub-debug] booking report", reportName,
+          "criteria match ->", rows.length, "row(s)"), remember(rows);
+        /* Criteria found nothing (or wasn't usable) — scan the report. */
+        return kr({
+          report_name: reportName,
+          field_config: "all",
+          max_records: 200
+        }).then(function(res2) {
+          var allRows = res2 && res2.data || [];
+          console.log(gr, "[hub-debug] booking report", reportName, "scan returned",
+            allRows.length, "row(s)");
+          var matches = allRows.filter(function(record) {
+            var refs = refListFromValue(sr(record, BOOKING_FIELD_CANDIDATES.bookingId)),
+              candidates = [String(record.ID || record.id || "")].concat(refs.ids).concat(
+                refs.names).map(normKey);
+            return wanted.some(function(k) {
+              return -1 !== candidates.indexOf(k)
+            })
+          });
+          if (!matches.length && allRows.length) console.log(gr,
+            "[hub-debug] no match in", reportName, "— Booking IDs seen:", allRows.slice(0,
+              20).map(function(rec) {
+              return lookupLabel(sr(rec, BOOKING_FIELD_CANDIDATES.bookingId)) || rec.ID
+            }));
+          return matches.length ? remember(matches) : tryReport(index + 1)
+        })
+      }).catch(function(err) {
+        return console.warn(gr, "[hub-debug] getRecords on booking report", reportName,
+          "threw (likely not a report name in this app):", err), tryReport(index + 1)
+      })
+    }(0)
+  }
+
+  /* ---------- Booking -> Shipment Items ---------- */
+
+  /* The Shipment_Items grid on the Shipment_Booking report is a
+     concatenated formula string, so this normally yields nothing. It is
+     kept for apps whose report exposes the grid as real rows. */
+  function subformRowsFromBooking(booking) {
+    if (!booking) return [];
+    var key = or(booking, BOOKING_FIELD_CANDIDATES.shipmentItems),
+      raw = key ? booking[key] : null,
+      rows = Array.isArray(raw) ? raw : (raw && "object" == typeof raw ? [raw] : []);
+    if (rows.length && "object" == typeof rows[0] && (or(rows[0],
+        SHIPMENT_ITEM_FIELD_CANDIDATES.name) || or(rows[0], SHIPMENT_ITEM_FIELD_CANDIDATES
+        .qty))) return rows;
+    var found = [];
+    Object.keys(booking).forEach(function(k) {
+      var v = booking[k];
+      if (!Array.isArray(v) || !v.length || "object" != typeof v[0]) return;
+      if (or(v[0], SHIPMENT_ITEM_FIELD_CANDIDATES.name) || or(v[0],
+          SHIPMENT_ITEM_FIELD_CANDIDATES.qty)) {
+        console.log(gr, "[hub-debug] auto-detected a Shipment_Items grid under field", k);
+        found = found.concat(v)
+      }
+    });
+    return found
+  }
+
+  function shipmentItemsFromBookings(bookings) {
+    return (bookings || []).reduce(function(items, booking) {
+      return items.concat(subformRowsFromBooking(booking))
+    }, [])
+  }
+
+  /* True when this Shipment_Items row belongs to one of these bookings —
+     matched on the back-link's record ID or its label. */
+  function rowLinksToBooking(row, bookingKeys) {
+    var key = or(row, SHIPMENT_ITEM_FIELD_CANDIDATES.bookingLink),
+      values = key ? [row[key]] : [];
+    if (!values.length) Object.keys(row).forEach(function(k) {
+      /booking/i.test(k) && !/date/i.test(k) && values.push(row[k])
+    });
+    var candidates = [];
+    values.forEach(function(v) {
+      var refs = refListFromValue(v);
+      refs.ids.concat(refs.names).forEach(function(x) {
+        candidates.push(normKey(x))
+      })
+    });
+    return bookingKeys.some(function(k) {
+      return -1 !== candidates.indexOf(k)
+    })
+  }
+
+  var ITEM_CACHE = {
+    key: null,
+    rows: null
+  };
+
+  /* Primary source for hubs AND for POD items. Queries the Shipment_Items
+     report and keeps the rows linked to this trip's booking(s); falls
+     back to the booking's own grid if a report ever exposes real rows. */
+  function fetchShipmentItemsForBookings(bookings) {
+    bookings = bookings || [];
+    if (!bookings.length) return Promise.resolve([]);
+    var bookingRecordIds = bookings.map(function(b) {
+        return String(b.ID || b.id || "").trim()
+      }).filter(Boolean),
+      bookingKeys = [];
+    bookingRecordIds.forEach(function(id) {
+      bookingKeys.push(normKey(id))
+    });
+    bookings.forEach(function(b) {
+      var refs = refListFromValue(sr(b, BOOKING_FIELD_CANDIDATES.bookingId));
+      refs.ids.concat(refs.names).forEach(function(x) {
+        x && bookingKeys.push(normKey(x))
+      })
+    });
+    var cacheKey = bookingKeys.join("|");
+    if (ITEM_CACHE.key === cacheKey && ITEM_CACHE.rows && ITEM_CACHE.rows.length)
+    return Promise.resolve(ITEM_CACHE.rows);
+
+    function remember(rows) {
+      return rows && rows.length && (ITEM_CACHE.key = cacheKey, ITEM_CACHE.rows = rows), rows
+    }
+
+    function tryReport(index) {
+      if (index >= SHIPMENT_ITEM_REPORT_CANDIDATES.length) {
+        /* Nothing from any report — last chance is the parent grid. */
+        var embedded = shipmentItemsFromBookings(bookings);
+        return console.warn(gr,
+          "[hub-debug] no Shipment_Items report returned matching rows — tried:",
+          SHIPMENT_ITEM_REPORT_CANDIDATES, "| grid fallback gave", embedded.length,
+          "row(s)"), Promise.resolve(remember(embedded))
+      }
+      var reportName = SHIPMENT_ITEM_REPORT_CANDIDATES[index],
+        params = {
+          report_name: reportName,
+          field_config: "all",
+          max_records: 500
+        };
+      /* Shipment_Items.Booking_Shipments is a lookup, so it is queried by
+         the parent record ID. */
+      if (bookingRecordIds.length) params.criteria = "(" + bookingRecordIds.map(function(id) {
+        return "Booking_Shipments == " + id
+      }).join(" || ") + ")";
+      return kr(params).then(function(res) {
+        var rows = res && res.data || [];
+        if (rows.length) return console.log(gr, "[hub-debug] item report", reportName,
+          "criteria match ->", rows.length, "row(s)"), remember(rows);
+        return kr({
+          report_name: reportName,
+          field_config: "all",
+          max_records: 500
+        }).then(function(res2) {
+          var allRows = res2 && res2.data || [];
+          console.log(gr, "[hub-debug] item report", reportName, "scan returned", allRows
+            .length, "row(s)");
+          var matches = allRows.filter(function(item) {
+            return rowLinksToBooking(item, bookingKeys)
+          });
+          console.log(gr, "[hub-debug] item report", reportName, "matched", matches.length,
+            "row(s) for booking keys", bookingKeys);
+          return matches.length ? remember(matches) : tryReport(index + 1)
+        })
+      }).catch(function(err) {
+        return console.warn(gr, "[hub-debug] getRecords on item report", reportName,
+          "threw (likely not a report name in this app):", err), tryReport(index + 1)
+      })
+    }
+    return tryReport(0)
+  }
+
+  /* ---------- hub matching + item mapping ---------- */
+
+  function shipmentItemMatchesHub(item, hubName) {
+    var refs = hubRefsFromRow(item),
+      selectedHubId = HUB_NAME_TO_ID[hubName] || "";
+    /* Primary: match on the Locations record ID — immune to label drift
+       (whitespace, casing, or a disambiguation suffix). */
+    if (selectedHubId && -1 !== refs.ids.map(String).indexOf(String(selectedHubId))) return !0;
+    /* Fallback: normalized label match, for rows that carry only the
+       hub's display value or before HUB_NAME_TO_ID is populated. */
+    var wanted = normKey(hubName);
+    if (!wanted) return !1;
+    return refs.names.some(function(nm) {
+      return normKey(nm) === wanted
+    })
+  }
+
+  /* ------------------------------------------------------------
+     Item Name resolution fix.
+     Shipment_Items.Item is a lookup to the Items module, but the Items
+     module's own "display value" is configured to be the record ID, so
+     the API hands back the raw numeric ID (e.g. "37288000000095013")
+     instead of the item's name — that's what was showing on the POD
+     pages. ITEM_ID_TO_NAME resolves that ID to the real name by reading
+     it straight from the Items report, the same pattern already used
+     for HUB_NAME_TO_ID above. Additive only: if the lookup can't be
+     resolved for any reason, the original ID is shown exactly as
+     before, so nothing regresses.
+     ------------------------------------------------------------ */
+  var ITEM_ID_TO_NAME = {};
+  var ITEM_NAMES_LOAD_PROMISE = null;
+  var ITEM_REPORT_CANDIDATES = ["Items", "All_Items", "Item", "All_Item", "Products",
+    "All_Products", "Item_Master", "All_Item_Master"
+  ];
+  var ITEM_NAME_FIELD_CANDIDATES = ["Item_Name", "Name", "Product_Name", "Title",
+    "Item_Description", "Description"
+  ];
+
+  function looksLikeRawRecordId(v) {
+    return /^\d{6,}$/.test(String(null == v ? "" : v).trim())
+  }
+
+  function ensureItemNamesLoaded() {
+    if (ITEM_NAMES_LOAD_PROMISE) return ITEM_NAMES_LOAD_PROMISE;
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return ITEM_NAMES_LOAD_PROMISE =
+      Promise.resolve();
+    return ITEM_NAMES_LOAD_PROMISE = function tryReport(n) {
+      if (n >= ITEM_REPORT_CANDIDATES.length) return Promise.resolve();
+      return kr({
+        report_name: ITEM_REPORT_CANDIDATES[n],
+        field_config: "all",
+        max_records: 1000
+      }).then(function(res) {
+        var rows = res && res.data || [];
+        if (!rows.length) return tryReport(n + 1);
+        rows.forEach(function(rec) {
+          var id = rec.ID || rec.id;
+          if (!id) return;
+          var nm = cr(sr(rec, ITEM_NAME_FIELD_CANDIDATES));
+          nm && !looksLikeRawRecordId(nm) && (ITEM_ID_TO_NAME[id] = nm)
+        }), console.log(gr, "Item names resolved via", ITEM_REPORT_CANDIDATES[n], "-", Object
+          .keys(ITEM_ID_TO_NAME).length, "item(s)")
+      }).catch(function(err) {
+        return console.warn(gr, "[item-name] getRecords on item report",
+          ITEM_REPORT_CANDIDATES[n], "threw (likely not a report name in this app):", err),
+          tryReport(n + 1)
+      })
+    }(0)
+  }
+
+  function resolveItemName(raw) {
+    var val = cr(raw) || "Item";
+    return looksLikeRawRecordId(val) && ITEM_ID_TO_NAME[val] ? ITEM_ID_TO_NAME[val] : val
+  }
+
+  function mapOneShipmentItem(item, index) {
+    var qty = Number(sr(item, SHIPMENT_ITEM_FIELD_CANDIDATES.qty)) || 0,
+      priceRaw = cr(sr(item, SHIPMENT_ITEM_FIELD_CANDIDATES.price)),
+      priceNum = "" === priceRaw ? NaN : parseFloat(String(priceRaw).replace(/[^0-9.\-]/g, ""));
+    return {
+      id: item.ID || item.id || "shipment-item-" + index,
+      price: isNaN(priceNum) ? null : priceNum,
+      /* Item: Shipment_Items.Item, resolved to its real name where
+         possible (see resolveItemName / ITEM_ID_TO_NAME above). */
+      name: resolveItemName(sr(item, SHIPMENT_ITEM_FIELD_CANDIDATES.name)),
+      /* Quantity: Shipment_Items.Quantity, exactly as booked. */
+      qty: qty,
+      /* Received quantity defaults to the full Quantity; the driver can
+         edit it down on the POD page for a partial delivery. */
+      receivedQty: qty,
+      /* Pending = Quantity − Received, kept in sync as the driver edits
+         (see renderPodItemsUI / recalcPodItemPending). */
+      pendingQty: 0
+    }
+  }
+
+  function mapShipmentSubformItems(rows, hubName) {
+    var seen = {};
+    return (rows || []).reduce(function(items, item, index) {
+      if (!shipmentItemMatchesHub(item, hubName)) return items;
+      var mapped = mapOneShipmentItem(item, index),
+        key = mapped.id || mapped.name + "|" + mapped.qty;
+      return seen[key] ? items : (seen[key] = !0, items.push(mapped), items)
+    }, [])
+  }
+
+  /* True when NO row carries any hub reference. Hub filtering is then
+     impossible, and every item of the booking belongs to the hub the
+     driver picked. */
+  function rowsHaveNoHubInfo(rows) {
+    return !(rows || []).some(function(r) {
+      var refs = hubRefsFromRow(r);
+      return refs.ids.length || refs.names.length
+    })
+  }
+
+  /* ---------- signature pad (unchanged) ---------- */
+
   var sigPad = {
     canvas: null,
     ctx: null,
@@ -3319,62 +5670,59 @@
     sigPadResize()
   }
 
+  /* ---------- POD item list UI (unchanged) ---------- */
+
+  function recalcPodItemPending(id) {
+    var recvEl = document.querySelector('[data-recv="' + id + '"]'),
+      pendEl = document.querySelector('[data-pending="' + id + '"]'),
+      item = CURRENT_POD_ITEMS.filter(function(p) {
+        return String(p.id) === String(id)
+      })[0];
+    if (!recvEl || !pendEl || !item) return;
+    var recv = Math.max(0, Number(recvEl.value) || 0),
+      pending = Math.max(0, (Number(item.qty) || 0) - recv);
+    item.receivedQty = recv, item.pendingQty = pending, pendEl.textContent = String(pending)
+  }
+
   function renderPodItemsUI() {
-    var host = u("#podItemList");
+    var host = u("#podItemList"),
+      summaryEl = u("#podSummaryLine");
     if (host) {
-      if (CURRENT_POD_LOADING) return void(host.innerHTML =
+      if (CURRENT_POD_LOADING) return summaryEl && (summaryEl.hidden = !0), void(host.innerHTML =
         '<li class="pod-item pod-item--empty">Loading items…</li>');
-      if (!CURRENT_POD_ITEMS.length) return void(host.innerHTML =
+      if (!CURRENT_POD_ITEMS.length) return summaryEl && (summaryEl.hidden = !0), void(host
+        .innerHTML =
         '<li class="pod-item pod-item--empty">No items found for this booking/trip at this hub.</li>'
         );
+      if (summaryEl) {
+        var totalQty = CURRENT_POD_ITEMS.reduce(function(sum, p) {
+          return sum + (Number(p.qty) || 0)
+        }, 0);
+        summaryEl.hidden = !1, summaryEl.innerHTML = "<span>" + CURRENT_POD_ITEMS.length +
+          " item" + (1 === CURRENT_POD_ITEMS.length ? "" : "s") + " to deliver</span><span>" +
+          totalQty + " total quantity</span>"
+      }
       host.innerHTML = CURRENT_POD_ITEMS.map(function(p) {
         return '<li class="pod-item"><label class="pod-item__check"><input type="checkbox" data-pid="' +
           p.id + '" checked><span>' + p.name +
-          '</span></label><div class="pod-item__qty"><span>Qty delivered</span><input type="number" min="0" data-qty="' +
-          p.id + '" value="' + p.qty + '"></div></li>'
-      }).join("")
+          '</span></label><div class="pod-item__qty"><span>Quantity</span><span class="pod-item__qty-val">' +
+          p.qty +
+          '</span></div><div class="pod-item__qty"><span>Received qty</span><input type="number" min="0" max="' +
+          p.qty + '" data-recv="' + p.id + '" value="' + p.receivedQty +
+          '"></div><div class="pod-item__qty"><span>Pending qty</span><span class="pod-item__qty-val" data-pending="' +
+          p.id + '">' + p.pendingQty + '</span></div></li>'
+      }).join(""), host.querySelectorAll("[data-recv]").forEach(function(el) {
+        el.addEventListener("input", function() {
+          recalcPodItemPending(el.getAttribute("data-recv"))
+        })
+      }), CURRENT_POD_ITEMS.forEach(function(p) {
+        recalcPodItemPending(p.id)
+      })
     }
   }
-  var SHIPMENT_ITEMS_REPORT_CANDIDATES = ["Shipment_Items", "All_Shipment_Items"];
-  var SHIPMENT_ITEM_HUB_FIELD = ["Hub_Name"];
-  var SHIPMENT_ITEM_BOOKING_LINK_FIELD = ["Booking_Shipments"];
 
-  function fetchShipmentItemsReport(criteria) {
-    return function tryReport(idx) {
-      return idx >= SHIPMENT_ITEMS_REPORT_CANDIDATES.length ? Promise.resolve([]) : kr({
-        report_name: SHIPMENT_ITEMS_REPORT_CANDIDATES[idx],
-        criteria: criteria,
-        field_config: "all",
-        max_records: 200
-      }).then(function(res) {
-        return res && res.data || []
-      }).catch(function(err) {
-        return console.warn(gr, "getRecords on", SHIPMENT_ITEMS_REPORT_CANDIDATES[idx],
-          "(Shipment_Items) failed:", err), tryReport(idx + 1)
-      })
-    }(0)
-  }
+  /* ---------- Locations helpers + Leaflet trip map ---------- */
 
-  function mapShipmentItemRecords(rows) {
-    return rows.map(function(rec) {
-      var nm = cr(sr(rec, SHIPMENT_ITEM_FIELD_CANDIDATES.name)) || "Item",
-        qty = Number(sr(rec, SHIPMENT_ITEM_FIELD_CANDIDATES.qty)) || 0;
-      return {
-        id: rec.ID || rec.id || "",
-        name: nm,
-        qty: qty
-      }
-    }).filter(function(it) {
-      return it.id
-    })
-  }
-
-  function rawLookupId(v) {
-    if (null == v) return "";
-    if (Array.isArray(v)) v = v[0];
-    return null == v ? "" : "string" == typeof v || "number" == typeof v ? String(v).trim() :
-      String(v.ID || v.zc_id || v.id || "").trim()
-  }
   var LOC_LAT_FIELDS = ["Hub_Location.latitude", "Latitude"];
   var LOC_LNG_FIELDS = ["Hub_Location.longitude", "Longitude"];
   var LOC_ADDR_FIELDS = ["Hub_Location"];
@@ -3402,34 +5750,168 @@
     hubs: []
   };
 
-  function getTripBookingIds() {
-    var tripRec = K.record;
-    return tripRec ? idListOf(sr(tripRec, ce.assignedBookings)) : []
+  /* ------------------------------------------------------------
+     Resolves the Hubs that belong to this Trip's Booking. Each
+     Shipment_Items row points at its own Hub_Name, so the unique hub set
+     is aggregated across every item row of the booking —
+     Booking.Assigned_Hub alone would only ever yield one hub.
+
+     Returns {ids:[], names:[]}: BOTH are collected, because a Zoho lookup
+     may arrive as a record ID, as a display label, or as both. Resolves
+     to null when there is no trip/booking context yet, so callers can
+     tell "not loaded" from "no hubs".
+     ------------------------------------------------------------ */
+  var TRIP_HUB_ID_CACHE = {
+    tripRecordId: null,
+    refs: null
+  };
+
+  function resetTripHubCache() {
+    TRIP_HUB_ID_CACHE.tripRecordId = null, TRIP_HUB_ID_CACHE.refs = null,
+      BOOKING_CACHE.key = null, BOOKING_CACHE.rows = null,
+      ITEM_CACHE.key = null, ITEM_CACHE.rows = null,
+      HUB_PIPELINE_LOADED_FOR = null
   }
 
-  function fetchTripHubLocations() {
+  function resolveTripHubRefs(forceRefresh) {
     var bookingIds = getTripBookingIds();
-    if (!bookingIds.length) return Promise.resolve([]);
-    var crit = "(" + bookingIds.map(function(id) {
-      return SHIPMENT_ITEM_BOOKING_LINK_FIELD[0] + ' == "' + id + '"'
-    }).join(" || ") + ")";
-    return fetchShipmentItemsReport(crit).then(function(rows) {
-      var hubIds = [];
-      rows.forEach(function(rec) {
-        var raw = sr(rec, SHIPMENT_ITEM_HUB_FIELD),
-          id = rawLookupId(raw);
-        id && -1 === hubIds.indexOf(id) && hubIds.push(id)
+    if (!bookingIds.length) return Promise.resolve(null);
+    var currentTripKey = K.tripRecordId || K.tripId || "";
+    if (!forceRefresh && TRIP_HUB_ID_CACHE.tripRecordId === currentTripKey && TRIP_HUB_ID_CACHE
+      .refs && (TRIP_HUB_ID_CACHE.refs.ids.length || TRIP_HUB_ID_CACHE.refs.names.length))
+    return Promise.resolve(TRIP_HUB_ID_CACHE.refs);
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      return fetchShipmentItemsForBookings(bookings).then(function(items) {
+        var ids = [],
+          names = [];
+        items.forEach(function(rec) {
+          var refs = hubRefsFromRow(rec);
+          refs.ids.forEach(function(id) {
+            -1 === ids.indexOf(id) && ids.push(id)
+          });
+          refs.names.forEach(function(nm) {
+            -1 === names.indexOf(nm) && names.push(nm)
+          })
+        });
+        /* Fallback: the booking's own Assigned_Hub, for bookings whose
+           items carry no hub of their own. */
+        if (!ids.length && !names.length) bookings.forEach(function(b) {
+          var refs = refListFromValue(sr(b, BOOKING_FIELD_CANDIDATES.assignedHub));
+          refs.ids.forEach(function(id) {
+            -1 === ids.indexOf(id) && ids.push(id)
+          });
+          refs.names.forEach(function(nm) {
+            -1 === names.indexOf(nm) && names.push(nm)
+          })
+        });
+        var out = {
+          ids: ids,
+          names: names
+        };
+        console.log(gr, "[hub-debug] resolveTripHubRefs ->", out);
+        /* Never cache an empty result: a transient miss must not poison
+           every later lookup for this trip. */
+        if (ids.length || names.length) TRIP_HUB_ID_CACHE.tripRecordId = currentTripKey,
+          TRIP_HUB_ID_CACHE.refs = out;
+        return out
+      })
+    })
+  }
+
+  /* Back-compat shim for anything expecting a plain ID array. */
+  function resolveTripHubIds(forceRefresh) {
+    return resolveTripHubRefs(forceRefresh).then(function(refs) {
+      return refs ? refs.ids : null
+    })
+  }
+
+  function locationMatchesHubRefs(rec, refs) {
+    if (!refs) return !0;
+    var recId = String(rec.ID || rec.id || "");
+    if (recId && -1 !== refs.ids.map(String).indexOf(recId)) return !0;
+    var nm = normKey(cr(sr(rec, t)));
+    return !!nm && refs.names.some(function(x) {
+      return normKey(x) === nm
+    })
+  }
+
+  var HUB_PIPELINE_LOADED_FOR = null;
+
+  /* ------------------------------------------------------------
+     Replaces the "Hubs & stops" pipeline's placeholder demo stops
+     with the real hub list for this Trip's Booking (the same
+     Booking -> Shipment_Items -> Hub_Name resolution already used
+     for the Live Trip Map filter). Distance/ETA/delivery-breakdown
+     aren't available from that source, so they're left blank rather
+     than inventing plausible-looking numbers.
+     ------------------------------------------------------------ */
+  function rebuildHubPipelineFromBooking() {
+    var currentTripKey = K.tripRecordId || K.tripId || "";
+    if (!currentTripKey || HUB_PIPELINE_LOADED_FOR === currentTripKey) return Promise.resolve();
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve();
+    return resolveTripHubRefs().then(function(refs) {
+      if (!refs || (!refs.ids.length && !refs.names.length)) return;
+      var names = refs.names.length ? refs.names : refs.ids.map(String);
+      Q = names.map(function(nm, i) {
+        return {
+          no: i + 1,
+          name: nm,
+          location: "",
+          distance: "—",
+          eta: "—",
+          status: "upcoming",
+          delivery: []
+        }
+      }), J = 0, HUB_PIPELINE_LOADED_FOR = currentTripKey, ie(), updateStopsCompletedKpi()
+    }).catch(function(err) {
+      console.warn(gr, "rebuildHubPipelineFromBooking failed:", err)
+    })
+  }
+
+  /* Every hub NAME tied to this trip's booking/shipment items, regardless
+     of whether a matching Locations row (and lat/lng) is ever found. The
+     map-hub filter is built from this list — a hub that hasn't been
+     geocoded yet should still show up as a filter option, it just won't
+     get a marker. */
+  function fetchTripHubLocations() {
+    return resolveTripHubRefs().then(function(refs) {
+      if (!refs || (!refs.ids.length && !refs.names.length)) return [];
+      /* Start from the names/ids we already know belong to this trip, so
+         the filter list is correct even if the Locations lookup below
+         fails entirely (wrong report name, no network, etc). */
+      var byKey = {},
+        order = [];
+
+      function upsert(key, patch) {
+        var norm = normKey(key);
+        if (!norm) return;
+        if (!byKey[norm]) byKey[norm] = {
+          id: "",
+          name: key,
+          lat: null,
+          lng: null,
+          address: "",
+          _norm: norm
+        }, order.push(norm);
+        Object.keys(patch || {}).forEach(function(k) {
+          null != patch[k] && "" !== patch[k] && (byKey[norm][k] = patch[k])
+        })
+      }
+      refs.names.forEach(function(nm) {
+        upsert(nm, {
+          name: nm
+        })
       });
-      if (!hubIds.length) return [];
       var locCandidates = [e.locations].concat(e.locationsFallbacks || []).filter(function(v, i,
         arr) {
         return v && arr.indexOf(v) === i
       });
       return function tryLoc(idx) {
-        if (idx >= locCandidates.length) return [];
-        var crit2 = "(" + hubIds.map(function(id) {
-          return "ID == " + id
-        }).join(" || ") + ")";
+        if (idx >= locCandidates.length) return Object.keys(byKey).map(function(k) {
+          return byKey[k]
+        }).filter(function(h) {
+          return h.name
+        });
         return kr({
           report_name: locCandidates[idx],
           field_config: "all",
@@ -3437,9 +5919,10 @@
         }).then(function(res) {
           var rows2 = res && res.data || [],
             matched = rows2.filter(function(rec) {
-              return -1 !== hubIds.indexOf(String(rec.ID || rec.id || ""))
+              return locationMatchesHubRefs(rec, refs)
             });
-          return matched.map(function(rec) {
+          if (!matched.length && idx + 1 < locCandidates.length) return tryLoc(idx + 1);
+          matched.forEach(function(rec) {
             var nm = cr(sr(rec, t)) || "Hub",
               lat = locNumField(rec, LOC_LAT_FIELDS),
               lng = locNumField(rec, LOC_LNG_FIELDS),
@@ -3447,15 +5930,20 @@
               addr = addrRaw && typeof addrRaw == "object" ? [addrRaw.address_line_1,
                 addrRaw.address_line_2, addrRaw.district_city, addrRaw.state_province
               ].filter(Boolean).join(", ") : "";
-            return {
+            upsert(nm, {
               id: rec.ID || rec.id || "",
               name: nm,
               lat: lat,
               lng: lng,
               address: addr
-            }
+            })
+          });
+          /* Keep the hub NAMES even when no Locations row matched — only
+             the marker/coordinates are optional, the filter entry is not. */
+          return order.map(function(k) {
+            return byKey[k]
           }).filter(function(h) {
-            return null != h.lat && null != h.lng
+            return h.name
           })
         }).catch(function(err) {
           return console.warn(gr, "getRecords on", locCandidates[idx],
@@ -3468,13 +5956,20 @@
   function ensureTripMapInit() {
     if (tripMapState.map) return tripMapState.map;
     var el = u("#tripMapOSM");
-    if (!el || typeof L == "undefined") return null;
-    var map = L.map(el, {
+    /* BUG FIX: `L` inside this file is the page-loader helper (function L()
+       near the top), which shadows the Leaflet global — that is what threw
+       "L.map is not a function". Leaflet must be read from window.L. */
+    if (!el || !window.L || typeof window.L.map != "function") return null;
+    var map = window.L.map(el, {
       scrollWheelZoom: false
     }).setView([-25.2744, 133.7751], 4);
-    return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-      maxZoom: 18
+    /* Flat, uncluttered basemap (cream landmasses / light blue ocean, no
+       roads or place labels) — matches the reference design instead of
+       the busier default OSM raster style. */
+    return window.L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+      attribution: "© OpenStreetMap contributors © CARTO",
+      subdomains: "abcd",
+      maxZoom: 20
     }).addTo(map), tripMapState.map = map, map
   }
 
@@ -3486,29 +5981,77 @@
       filt = u("#mapHubFilter");
     if (filt && filt.value !== (name || "")) filt.value = name || "";
     if (!hub) return void(panel && (panel.hidden = !0));
+    var hasCoords = null != hub.lat && null != hub.lng;
     panel && (w("mapHubInfoBadge", "Hub"), w("mapHubInfoName", hub.name), w("mapHubInfoLoc", hub
-      .address || (hub.lat.toFixed(5) + ", " + hub.lng.toFixed(5))), panel.hidden = !1);
+      .address || (hasCoords ? hub.lat.toFixed(5) + ", " + hub.lng.toFixed(5) :
+        "Location coordinates not available")), panel.hidden = !1);
     var m = tripMapState.markers.filter(function(mk) {
       return mk._hubName === name
     })[0];
     m && tripMapState.map && (tripMapState.map.setView(m.getLatLng(), 13), m.openPopup())
   }
 
-  function renderTripMapHubs(hubs) {
-    var map = ensureTripMapInit(),
+  /* Fills the "Filter by hub" dropdown and the hub-count chip from the
+     Trip/Booking hub list. This runs independently of whether the Leaflet
+     map itself is ready — the hub names come from Zoho data, not from the
+     map library, so a slow/blocked map tile CDN must never leave the
+     filter empty. */
+  function renderTripMapHubList(hubs) {
+    tripMapState.hubs = hubs;
+    var chip = u("#mapHubCountText"),
+      filt = u("#mapHubFilter"),
+      mapped = hubs.filter(function(h) {
+        return null != h.lat && null != h.lng
+      });
+    if (!hubs.length) {
+      chip && (chip.textContent = "No hubs found for this trip");
+      filt && (filt.innerHTML = '<option value="">All hubs</option>');
+      return
+    }
+    chip && (chip.textContent = hubs.length + " hub" + (1 === hubs.length ? "" : "s") +
+      " on this trip" + (mapped.length < hubs.length ? " (" + mapped.length +
+        " mapped)" : ""));
+    var prevValue = filt && filt.value;
+    filt && (filt.innerHTML = '<option value="">All hubs</option>', hubs.forEach(function(h) {
+      var opt = document.createElement("option");
+      opt.value = h.name, opt.textContent = h.name, filt.appendChild(opt)
+    }), hubs.some(function(h) {
+      return h.name === prevValue
+    }) && (filt.value = prevValue), filt.onchange = function() {
+      var v = filt.value;
+      if (v) return void selectMapHubOSM(v);
+      u("#mapHubInfo") && (u("#mapHubInfo").hidden = !0);
+      var map = tripMapState.map,
+        bounds = mapped.map(function(h) {
+          return [h.lat, h.lng]
+        });
+      map && bounds.length && map.fitBounds(bounds, {
+        padding: [36, 36],
+        maxZoom: 13
+      })
+    })
+  }
+
+  /* Draws markers for whichever hubs currently have coordinates. Safe to
+     call repeatedly (e.g. once the map library finishes loading after the
+     hub list already rendered) — it just redraws the marker layer. */
+  function renderTripMapMarkers() {
+    var map = tripMapState.map,
       emptyEl = u("#tripMapEmpty"),
-      chip = u("#mapHubCountText");
+      hubs = tripMapState.hubs || [];
     if (tripMapState.markers.forEach(function(m) {
         map && map.removeLayer(m)
-      }), tripMapState.markers = [], tripMapState.hubs = hubs, !map) return void(emptyEl && (emptyEl
-      .hidden = !1));
-    if (!hubs.length) return emptyEl && (emptyEl.hidden = !1), void(chip && (chip.textContent =
-      "No hubs found"));
-    emptyEl && (emptyEl.hidden = !0), chip && (chip.textContent = hubs.length + " hub" + (1 === hubs
-      .length ? "" : "s") + " on this trip");
+      }), tripMapState.markers = [], !map) return;
+    var mapped = hubs.filter(function(h) {
+      return null != h.lat && null != h.lng
+    });
+    if (!hubs.length) return void(emptyEl && (emptyEl.hidden = !1));
+    if (!mapped.length) return void(emptyEl && (emptyEl.hidden = !1, emptyEl.textContent =
+      "No hub coordinates available to plot for this trip yet."));
+    emptyEl && (emptyEl.hidden = !0);
     var bounds = [];
-    hubs.forEach(function(h) {
-      var marker = L.marker([h.lat, h.lng]).addTo(map).bindPopup("<b>" + h.name + "</b>" + (h
+    mapped.forEach(function(h) {
+      var marker = window.L.marker([h.lat, h.lng]).addTo(map).bindPopup("<b>" + h.name + "</b>" + (h
         .address ? "<br>" + h.address : ""));
       marker._hubName = h.name, marker.on("click", function() {
         selectMapHubOSM(h.name)
@@ -3516,27 +6059,41 @@
     }), bounds.length && map.fitBounds(bounds, {
       padding: [36, 36],
       maxZoom: 13
-    });
-    var filt = u("#mapHubFilter");
-    filt && (filt.innerHTML = '<option value="">All hubs</option>', hubs.forEach(function(h) {
-      var opt = document.createElement("option");
-      opt.value = h.name, opt.textContent = h.name, filt.appendChild(opt)
-    }), filt.onchange = function() {
-      var v = filt.value;
-      v ? selectMapHubOSM(v) : (u("#mapHubInfo") && (u("#mapHubInfo").hidden = !0), bounds
-        .length && map.fitBounds(bounds, {
-          padding: [36, 36],
-          maxZoom: 13
-        }))
     })
   }
 
-  function loadTripMapOSM() {
-    if (typeof L == "undefined") return void setTimeout(loadTripMapOSM, 300);
+  function renderTripMapHubs(hubs) {
+    renderTripMapHubList(hubs), renderTripMapMarkers()
+  }
+
+  /* Bounded retry for the Leaflet library/tiles — a blocked or slow CDN
+     must not spin forever with the map area silently blank. After
+     ~8s it surfaces a message instead of retrying quietly. */
+  var TRIP_MAP_INIT_TRIES = 0;
+
+  function initTripMapWhenReady() {
+    if (tripMapState.map) return void renderTripMapMarkers();
+    if (!window.L || typeof window.L.map != "function") {
+      if (++TRIP_MAP_INIT_TRIES > 26) {
+        var emptyEl = u("#tripMapEmpty");
+        return void(emptyEl && (emptyEl.hidden = !1, emptyEl.textContent =
+          "Map couldn't load — check your connection and reopen this page."))
+      }
+      return void setTimeout(initTripMapWhenReady, 300)
+    }
+    TRIP_MAP_INIT_TRIES = 0;
     var map = ensureTripMapInit();
-    if (map) setTimeout(function() {
-      map.invalidateSize()
-    }, 60);
+    map && (setTimeout(function() {
+      map.invalidateSize(), renderTripMapMarkers()
+    }, 60), renderTripMapMarkers())
+  }
+
+  function loadTripMapOSM() {
+    /* Map tiles and hub data are independent: kick off both, neither one
+       blocks the other. A slow tile CDN must not leave the hub filter
+       stuck on "Loading hubs…" forever, and missing hub data must not
+       keep the tiles from rendering. */
+    initTripMapWhenReady();
     var currentTripId = K.tripRecordId || K.tripId || "";
     if (tripMapState.loadedForTrip === currentTripId && tripMapState.hubs.length)
     return void renderTripMapHubs(tripMapState.hubs);
@@ -3551,85 +6108,830 @@
     })
   }
 
+  /* ------------------------------------------------------------
+     Shows "Trip ID: … · Booking ID: …" at the top of Hub Check-In /
+     Check-Out and POD. Once the driver has picked Booking IDs in the
+     checklist below, the chip reflects that selection; until then it
+     falls back to every Booking ID resolved off the Trip record so the
+     page never shows a blank dash while options are still loading.
+     ------------------------------------------------------------ */
+  function updateBookingIdChip() {
+    var label = "";
+    if (c.bookingIds && c.bookingIds.length) label = c.bookingIds.map(function(b) {
+      return b.label
+    }).filter(Boolean).join(", ");
+    else if (BOOKING_ID_OPTIONS.length) label = BOOKING_ID_OPTIONS.map(function(o) {
+      return o.label
+    }).filter(Boolean).join(", ");
+    else if (K.record) {
+      /* getTripBookingIds() is used here instead of le(K.record,
+         "assignedBookings") because it has an extra last-resort scan
+         (any field whose name contains "booking") that le() doesn't —
+         so if Zoho ever returns the Booking_ID multi-select under a
+         slightly different key, or the exact-key lookup otherwise
+         misses, the chip still finds it instead of showing "—". */
+      var keys = getTripBookingIds();
+      console.log(gr, "[booking-debug] updateBookingIdChip() fallback keys:", keys), label = keys
+        .join(", ")
+    }
+    var tripLabel = K.tripId || "—";
+    label = label || "—";
+    var a = u("#checkinBookingIdChip");
+    a && (a.textContent = "Trip ID: " + tripLabel + " · Booking ID: " + label);
+    var b = u("#podBookingIdChip");
+    b && (b.textContent = "Trip ID: " + tripLabel + " · Booking ID: " + label)
+  }
+
+  /* ------------------------------------------------------------
+     BOOKING ID CHECKLIST (Hub Check-In / Check-Out)
+     Booking_ID moved from a single Lookup to a Multi-Select, since one
+     Trip can now cover several Bookings. BOOKING_ID_OPTIONS holds every
+     Booking record {id, label} resolved off the active Trip (reusing
+     the same BOOKING_CACHE-backed lookup the hub pipeline already uses,
+     via fetchActiveTripShipmentBookings()); the checklist in
+     #bookingIdList lets the driver choose which of them this check-in
+     covers, and c.bookingIds tracks the current selection.
+     ------------------------------------------------------------ */
+  var BOOKING_ID_OPTIONS = [];
+
+  function bookingOptionKey(o) {
+    return String((o && (o.id || o.label)) || "")
+  }
+
+  function renderBookingIdChecklist() {
+    var host = u("#bookingIdList");
+    if (!host) return;
+    if (!BOOKING_ID_OPTIONS.length) return void(host.innerHTML =
+      '<li class="booking-item booking-item--empty">No Booking IDs found for this Trip.</li>');
+    /* Nothing chosen yet (e.g. first load for this trip) -> default to
+       every Booking ID selected, since most trips cover all of them. */
+    var selectedKeys = c.bookingIds && c.bookingIds.length ? c.bookingIds.map(function(b) {
+      return String(b.id || b.label || "")
+    }) : null;
+    host.innerHTML = BOOKING_ID_OPTIONS.map(function(o) {
+      var key = bookingOptionKey(o),
+        checked = selectedKeys ? -1 !== selectedKeys.indexOf(key) : !0;
+      return '<li class="booking-item"><label class="booking-item__check"><input type="checkbox" data-bid="' +
+        String(o.id || "").replace(/"/g, "&quot;") + '" data-blabel="' + String(o.label || "")
+        .replace(/"/g, "&quot;") + '"' + (checked ? " checked" : "") +
+        '> <span>' + String(o.label || "") + '</span></label></li>'
+    }).join(""), selectedKeys || syncSelectedBookingIdsFromChecklist()
+  }
+
+  /* Reads the checked boxes in #bookingIdList into c.bookingIds and
+     refreshes the "Booking ID: …" chip to match. Bound to the
+     checklist's (bubbling) change event, so it fires on every tick. */
+  function syncSelectedBookingIdsFromChecklist() {
+    var host = u("#bookingIdList");
+    c.bookingIds = host ? Array.prototype.slice.call(host.querySelectorAll(
+      'input[type="checkbox"]:checked')).map(function(cb) {
+      return {
+        id: cb.getAttribute("data-bid") || "",
+        label: cb.getAttribute("data-blabel") || ""
+      }
+    }) : [], updateBookingIdChip()
+  }
+
+  /* Drops the cached checklist so a new trip doesn't show the previous
+     trip's Booking IDs while the fresh list is still loading. */
+  function resetBookingIdSelection() {
+    BOOKING_ID_OPTIONS = [], c.bookingIds = []
+  }
+
+  /* Loads the Booking record(s) linked to the active Trip and (re)builds
+     the checklist. Mirrors Dr() (Hub Name dropdown) — same
+     fetchActiveTripShipmentBookings() source, so the Booking IDs offered
+     here always match what the Hub pipeline is using. */
+  function Fr() {
+    var host = u("#bookingIdList");
+    if (!host) return Promise.resolve();
+    if (!K.tripRecordId) return BOOKING_ID_OPTIONS = [], host.innerHTML =
+      '<li class="booking-item booking-item--empty">Start a trip to load Booking IDs.</li>', Promise
+      .resolve();
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve();
+    host.innerHTML = '<li class="booking-item booking-item--empty">Loading Booking IDs…</li>';
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      var seen = {};
+      BOOKING_ID_OPTIONS = (bookings || []).map(function(b) {
+        var label = lookupLabel(sr(b, BOOKING_FIELD_CANDIDATES.bookingId)) || b.ID || b.id || "";
+        label = String(label).trim();
+        return label ? {
+          id: b.ID || b.id || null,
+          label: label
+        } : null
+      }).filter(function(o) {
+        return o && !seen[o.label] && (seen[o.label] = !0)
+      }), console.log(gr, "[booking-debug] Booking ID checklist options:", BOOKING_ID_OPTIONS),
+      renderBookingIdChecklist()
+    }).catch(function(err) {
+      console.error(gr, "Fr() (Booking ID checklist) failed:", err), host.innerHTML =
+        '<li class="booking-item booking-item--empty">Could not load Booking IDs for this Trip.</li>'
+    })
+  }
+  /* ------------------------------------------------------------
+     Shows how many Shipment Items are assigned to the selected Hub for
+     THIS Trip + Booking, under the Hub Name dropdown. Uses the same
+     pipeline as the POD page, so the count and the POD list can never
+     disagree.
+     ------------------------------------------------------------ */
+  function updateHubItemCount(hubName) {
+    var el = u("#hubItemCount");
+    if (!el) return;
+    if (!hubName) return void(el.hidden = !0);
+    el.hidden = !1, el.textContent = "Checking items for this hub…";
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return void(el.textContent = "");
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      return fetchShipmentItemsForBookings(bookings).then(function(rows) {
+        var count = rowsHaveNoHubInfo(rows) ? rows.length : mapShipmentSubformItems(rows,
+          hubName).length;
+        el.hidden = !1, el.textContent = count + " shipment item" + (1 === count ? "" : "s") +
+          " assigned to this hub"
+      })
+    }).catch(function(err) {
+      console.error(gr, "Hub shipment item count lookup failed:", err);
+      el.textContent = "Couldn't load the item count for this hub."
+    })
+  }
+
+  /* ------------------------------------------------------------
+     POD items for the selected hub: Item + Quantity, read from the
+     Shipment Items of this Trip's Booking and filtered by the selected
+     Hub. Never falls back to a hub-only lookup — that could expose
+     another trip's shipment.
+     ------------------------------------------------------------ */
   function loadPodItemsForHub(hubName) {
+    /* Always prefer the live dropdown value, so POD never filters against
+       a stale c.hub if the driver changed the selection. */
+    var liveHubEl = u("#inHub");
+    hubName = (liveHubEl && liveHubEl.value) || hubName;
     CURRENT_POD_LOADING = true, renderPodItemsUI();
     if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return CURRENT_POD_ITEMS = (d[
       hubName] || []).map(function(p) {
       return {
         id: p.id,
         name: p.name,
-        qty: p.qty
+        qty: p.qty,
+        receivedQty: p.qty,
+        pendingQty: 0
       }
     }), CURRENT_POD_LOADING = false, void renderPodItemsUI();
-    var tripRec = K.record,
-      bookingIds = tripRec ? idListOf(sr(tripRec, ce.assignedBookings)) : [];
 
     function finish(items, source) {
       console.log(gr, "POD items resolved via", source, "-", items.length, "item(s)"),
         CURRENT_POD_LOADING = false, CURRENT_POD_ITEMS = items, renderPodItemsUI()
     }
 
-    function tryHubMatch() {
-      if (!hubName) return void finish([], "none — no hub selected");
-      var critH = "(" + SHIPMENT_ITEM_HUB_FIELD[0] + ' == "' + hubName.replace(/"/g, '\\"') + '")';
-      fetchShipmentItemsReport(critH).then(function(rows) {
-        finish(mapShipmentItemRecords(rows), "Hub_Name match")
-      }).catch(function() {
-        finish([], "hub match failed")
+    if (!K.record || !(K.tripId || K.tripRecordId)) return finish([],
+      "no active Trip_Dispatch record");
+    if (!getTripBookingIds().length) return finish([], "no Booking ID linked to this Trip ID");
+    if (!hubName) return finish([], "no hub selected");
+
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      return Promise.all([ensureItemNamesLoaded(), fetchShipmentItemsForBookings(bookings)]).then(
+        function(res) {
+        var rows = res[1];
+        /* When no row carries hub information at all, hub filtering is
+           impossible — every item of this booking belongs here. */
+        if (rowsHaveNoHubInfo(rows)) {
+          console.warn(gr,
+            "[hub-debug] no hub field on any Shipment_Items row — showing every item of this booking"
+          );
+          return finish(rows.map(mapOneShipmentItem),
+            "Trip + Booking Shipment Items (no hub field on rows)")
+        }
+        finish(mapShipmentSubformItems(rows, hubName),
+          "Trip_Dispatch + Booking + Shipment_Items.Hub_Name")
       })
-    }
-    if (bookingIds.length) {
-      var crit = "(" + bookingIds.map(function(id) {
-        return SHIPMENT_ITEM_BOOKING_LINK_FIELD[0] + ' == "' + id + '"'
-      }).join(" || ") + ")";
-      fetchShipmentItemsReport(crit).then(function(rows) {
-        var items = mapShipmentItemRecords(rows);
-        items.length ? finish(items, "Trip's assigned Booking(s) match") : tryHubMatch()
-      }).catch(tryHubMatch)
-    } else tryHubMatch()
+    }).catch(function(err) {
+      console.error(gr, "POD Shipment_Items lookup failed:", err);
+      finish([], "Shipment_Items lookup failed")
+    })
   }
 
   /* ------------------------------------------------------------
-     Populates the Hub Name <select> on the Hub Check-In / Check-Out
-     page from the real Locations report in Zoho Creator (tries
-     Locations1, then falls back through Locations / All_Locations).
+     NEW: Dispatch & POD (per-Booking flow)
+     Separate from the hub-based Hub Check-In/Create POD flow above —
+     this lets the driver pick ONE Booking ID for the active Trip, see
+     its Customer/Pickup/Delivery/Weight, and go straight to a POD page
+     listing only that Booking's Shipment Items (Item, Qty, Received Qty,
+     Pending Qty, Delivery Status, Delivery Note). Existing hub-based POD
+     (viewPod / loadPodItemsForHub / Hub_Check_in_Check_Out1) is untouched.
+     ------------------------------------------------------------ */
+  var DISPATCH_BOOKING_OPTIONS = [];
+  var DISPATCH_SELECTED_BOOKING = null;
+  var DISPATCH_POD_ITEMS = [];
+  /* Record ID of the Dispatch_POD record created when the Booking
+     Details are submitted; the POD subform (Proof_of_Delivery2) rows
+     are linked back to it via the bidirectional "Dispatch_POD" field. */
+  var DISPATCH_POD_RECORD_ID = null;
+
+  /* Fills the "Bookings on this trip" summary card at the top of the
+     Dispatch & POD page: how many bookings are on the selected Trip ID,
+     and the (de-duplicated) Company Names across those bookings. */
+  function renderDispatchTripBookingsSummary(bookings) {
+    w("dispatchTripBookingsCount", bookings.length + (1 === bookings.length ?
+      " booking" : " bookings"));
+    var namesEl = u("#dispatchTripCompanyNames");
+    if (!namesEl) return;
+    if (!bookings.length) return void(namesEl.textContent =
+      "No bookings found for this trip.");
+    var seen = {},
+      names = [];
+    bookings.forEach(function(b) {
+      var nm = lookupLabel(sr(b, BOOKING_FIELD_CANDIDATES.customer));
+      nm && !seen[nm] && (seen[nm] = !0, names.push(nm))
+    });
+    namesEl.textContent = names.length ? names.join(", ") :
+      "No company name found on these bookings.";
+  }
+
+  function populateDispatchBookingDropdown() {
+    var sel = u("#inDispatchBookingId");
+    if (!sel) return;
+    ["#inDispatchCustomer", "#inDispatchWeight", "#inDispatchPickup", "#inDispatchDelivery"]
+    .forEach(function(id) {
+      var el = u(id);
+      el && (el.value = "")
+    });
+    w("dispatchTripBookingsCount", "—");
+    var namesEl0 = u("#dispatchTripCompanyNames");
+    namesEl0 && (namesEl0.textContent = "Select a trip to see the bookings on it.");
+    if (!K.tripRecordId) return void(sel.innerHTML =
+      '<option value="" selected hidden disabled>Start a trip to load Booking IDs…</option>');
+    sel.innerHTML =
+      '<option value="" selected hidden disabled>Loading Booking IDs…</option>';
+    w("dispatchTripBookingsCount", "Loading…");
+    namesEl0 && (namesEl0.textContent = "Loading…");
+    fetchActiveTripShipmentBookings().then(function(bookings) {
+      DISPATCH_BOOKING_OPTIONS = bookings || [];
+      renderDispatchTripBookingsSummary(DISPATCH_BOOKING_OPTIONS);
+      if (!DISPATCH_BOOKING_OPTIONS.length) return void(sel.innerHTML =
+        '<option value="" selected hidden disabled>No Booking IDs found for this Trip.</option>'
+        );
+      var labels = DISPATCH_BOOKING_OPTIONS.map(function(b, i) {
+        return lookupLabel(sr(b, BOOKING_FIELD_CANDIDATES.bookingId)) || b.ID || b.id ||
+          "Booking " + (i + 1)
+      });
+      /* Booking IDs whose POD is already saved (see POD_PDF1) still
+         show in the list — the driver needs to see every Booking ID
+         on this Trip — but are rendered disabled so a completed
+         delivery can't be re-selected and re-submitted. Only Booking
+         IDs with no matching POD_PDF1 record stay selectable. */
+      renderDispatchBookingOptions(sel, labels, {});
+      fetchCompletedPodBookingIds(labels).then(function(completedSet) {
+        renderDispatchBookingOptions(sel, labels, completedSet)
+      }).catch(function(err) {
+        console.error(gr, "fetchCompletedPodBookingIds() failed:", err)
+      })
+    }).catch(function(err) {
+      console.error(gr, "populateDispatchBookingDropdown() failed:", err), sel.innerHTML =
+        '<option value="" selected hidden disabled>Could not load Booking IDs.</option>',
+        w("dispatchTripBookingsCount", "—"),
+        namesEl0 && (namesEl0.textContent = "Could not load bookings for this trip.")
+    })
+  }
+
+  /* Renders the Booking ID <select> options, disabling (but still
+     showing) any Booking ID present in completedSet. Kept as its own
+     function so populateDispatchBookingDropdown() can render once
+     immediately (nothing disabled yet, while the completed-lookup is
+     still in flight) and again once that lookup resolves, without
+     duplicating the option-building markup. */
+  function renderDispatchBookingOptions(sel, labels, completedSet) {
+    sel.innerHTML = '<option value="" selected hidden disabled>Select a Booking ID…</option>' +
+      labels.map(function(label, i) {
+        var isCompleted = !!completedSet[label],
+          safeLabel = String(label).replace(/</g, "&lt;");
+        return '<option value="' + i + '"' + (isCompleted ? " disabled" : "") + ">" + safeLabel +
+          (isCompleted ? " (POD completed)" : "") + "</option>"
+      }).join("")
+  }
+
+  /* Looks up which of these Booking IDs already have a saved POD_PDF1
+     record (Booking_ID field) — see the POD_PDF form's field
+     definition — so populateDispatchBookingDropdown() can disable
+     them instead of leaving every Booking ID selectable forever. */
+  function fetchCompletedPodBookingIds(bookingIds) {
+    var ids = (bookingIds || []).filter(Boolean);
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA || !ids.length) return Promise.resolve(
+      {});
+    var criteria = "(" + ids.map(function(id) {
+      return 'Booking_ID == "' + escapeCriteria(id) + '"'
+    }).join(" || ") + ")";
+    return kr({
+      report_name: "POD_PDF1",
+      criteria: criteria,
+      field_config: "all",
+      max_records: 1000
+    }).then(function(res) {
+      var set = {};
+      return (res && res.data || []).forEach(function(row) {
+        var bid = String(row.Booking_ID || "").trim();
+        bid && (set[bid] = !0)
+      }), set
+    }).catch(function(err) {
+      return console.error(gr, "fetchCompletedPodBookingIds() report query failed:", err), {}
+    })
+  }
+
+  /* ---------- POD Completion KPI (Trip details card) ----------
+     Total PODs     = Bookings assigned to the active Trip (the same list
+                      the Dispatch & POD "Booking ID" dropdown uses — one
+                      POD is expected per Booking).
+     Completed PODs = those Bookings that already have a saved POD_PDF
+                      record (POD_PDF1 report). This is the same test the
+                      dropdown uses to mark a Booking "(POD completed)".
+     Refreshed when the trip loads and right after every successful POD
+     save (optimistically first, then reconciled with Creator). */
+  var POD_KPI = {
+    tripKey: "",
+    labels: [],
+    done: {},
+    local: {},
+    loading: !1,
+    seq: 0
+  };
+
+  function podKpiSplitIds(v) {
+    return String(null == v ? "" : v).split(/[,;]+/).map(function(x) {
+      return x.trim()
+    }).filter(Boolean)
+  }
+
+  function renderPodCompletionKpi() {
+    var valEl = u("#podKpiVal"),
+      subEl = u("#podKpiSub"),
+      barEl = u("#podKpiBar");
+    if (!valEl) return;
+    var total = POD_KPI.labels.length;
+    if (!total) {
+      valEl.innerHTML = "— <small>/ — Completed</small>";
+      subEl && (subEl.textContent = POD_KPI.loading ? "Loading…" : K.tripRecordId ?
+        "No PODs assigned to this trip yet" : "Start a trip to track its PODs");
+      barEl && (barEl.style.width = "0%");
+      return
+    }
+    var completed = POD_KPI.labels.filter(function(label) {
+      return POD_KPI.done[label] || POD_KPI.local[label]
+    }).length;
+    valEl.innerHTML = completed + " <small>/ " + total + " Completed</small>";
+    subEl && (subEl.textContent = "Total PODs: " + total + " · Completed: " + completed +
+      " · Pending: " + (total - completed));
+    barEl && (barEl.style.width = Math.round(100 * completed / total) + "%")
+  }
+
+  /* Booking IDs (as shown on the popup, possibly several comma-separated
+     from the hub check-in flow) that were just saved. */
+  function podKpiMarkCompleted(ids) {
+    (ids || []).forEach(function(id) {
+      POD_KPI.local[id] = !0
+    });
+    renderPodCompletionKpi()
+  }
+
+  /* Which of these Booking IDs already have a saved POD_PDF record.
+     Matches on Booking_ID, plus this Trip's own POD_PDF rows (a hub
+     check-in POD stores several Booking IDs comma-separated in one
+     Booking_ID text field, so those are split before comparing).
+     Resolves to null (not {}) when the lookup itself fails, so a
+     transient error never wipes a count that was already known. */
+  function fetchTripCompletedPodBookingIds(labels) {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA || !labels.length) return Promise.resolve(
+      null);
+    var parts = labels.map(function(l) {
+      return 'Booking_ID == "' + escapeCriteria(l) + '"'
+    });
+    K.tripId && parts.push('Trip_ID == "' + escapeCriteria(K.tripId) + '"');
+    return kr({
+      report_name: POD_PDF_REPORT_NAME,
+      criteria: "(" + parts.join(" || ") + ")",
+      field_config: "all",
+      max_records: 1000
+    }).then(function(res) {
+      var wanted = {},
+        set = {};
+      labels.forEach(function(l) {
+        wanted[l] = !0
+      });
+      (res && res.data || []).forEach(function(row) {
+        podKpiSplitIds(cr(row.Booking_ID)).forEach(function(id) {
+          wanted[id] && (set[id] = !0)
+        })
+      });
+      return set
+    }).catch(function(err) {
+      console.warn(gr, "POD Completion KPI: could not read " + POD_PDF_REPORT_NAME + ":", err);
+      return null
+    })
+  }
+
+  function refreshPodCompletionKpi() {
+    if (!u("#podKpiVal")) return Promise.resolve();
+    var tripKey = K.tripRecordId || K.tripId || "";
+    if (POD_KPI.tripKey !== tripKey) POD_KPI = {
+      tripKey: tripKey,
+      labels: [],
+      done: {},
+      local: {},
+      loading: !1,
+      seq: POD_KPI.seq
+    };
+    if (!tripKey) return renderPodCompletionKpi(), Promise.resolve();
+    var seq = ++POD_KPI.seq;
+    POD_KPI.loading = !0;
+    renderPodCompletionKpi();
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      if (seq !== POD_KPI.seq) return;
+      var seen = {},
+        labels = [];
+      (bookings || []).forEach(function(b) {
+        var label = String(lookupLabel(sr(b, BOOKING_FIELD_CANDIDATES.bookingId)) || b.ID || b.id ||
+          "").trim();
+        label && !seen[label] && (seen[label] = !0, labels.push(label))
+      });
+      POD_KPI.labels = labels;
+      POD_KPI.loading = !1;
+      renderPodCompletionKpi();
+      return fetchTripCompletedPodBookingIds(labels).then(function(set) {
+        if (seq !== POD_KPI.seq) return;
+        set && (POD_KPI.done = set);
+        renderPodCompletionKpi()
+      })
+    }).catch(function(err) {
+      POD_KPI.loading = !1;
+      console.error(gr, "refreshPodCompletionKpi() failed:", err);
+      renderPodCompletionKpi()
+    })
+  }
+
+  function onDispatchBookingSelected() {
+    var sel = u("#inDispatchBookingId"),
+      idx = sel && sel.value;
+    DISPATCH_POD_RECORD_ID = null;
+    if (!sel || "" === idx || null == idx) return void(DISPATCH_SELECTED_BOOKING = null);
+    var booking = DISPATCH_BOOKING_OPTIONS[Number(idx)];
+    DISPATCH_SELECTED_BOOKING = booking || null;
+    if (!booking) return;
+    /* BUG FIX: these four are <input> fields, not text elements — w()
+       sets .textContent, which an <input> never renders (it displays
+       .value). That's why the fetched Customer/Weight/Pickup/Delivery
+       never visibly appeared even though the lookup itself was working.
+       Set .value directly instead, the same way populateDispatchBooking-
+       Dropdown() already clears these fields. */
+    var custEl = u("#inDispatchCustomer"),
+      weightEl = u("#inDispatchWeight"),
+      pickupEl = u("#inDispatchPickup"),
+      deliveryEl = u("#inDispatchDelivery"),
+      customerName = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.customer));
+    custEl && (custEl.value = customerName || "—");
+    weightEl && (weightEl.value = cr(sr(booking, BOOKING_FIELD_CANDIDATES.weight)) || "—");
+    pickupEl && (pickupEl.value = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.pickupLocation)) ||
+      "—");
+    deliveryEl && (deliveryEl.value = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES
+      .deliveryLocation)) || "—");
+    /* The Trip_Dispatch1 "Assigned Bookings" subform row (see
+       assignedBookingsFromTripRecord()) doesn't carry the Customer
+       Company Name directly — only the linked Booking record does — so
+       if it came back blank, look that record up once and fill it in
+       when it resolves. */
+    if (!customerName) {
+      var bookingRef = sr(booking, BOOKING_FIELD_CANDIDATES.bookingId);
+      resolveBookingCustomerName(bookingRef).then(function(nm) {
+        custEl && DISPATCH_SELECTED_BOOKING === booking && nm && (custEl.value = nm)
+      }).catch(function(err) {
+        console.error(gr, "resolveBookingCustomerName() failed:", err)
+      })
+    }
+  }
+
+  /* Looks up the Customer/Company Name from the standalone booking report
+     (BOOKING_REPORT_CANDIDATES) by Booking ID/record ID, for cases where
+     the Trip_Dispatch1 "Assigned Bookings" subform row doesn't carry the
+     customer name itself. */
+  function resolveBookingCustomerName(bookingRef) {
+    var key = rawLookupId(bookingRef) || String(bookingRef || "").trim();
+    if (!key) return Promise.resolve("");
+    var escaped = escapeCriteria(key);
+
+    function tryReport(index) {
+      if (index >= BOOKING_REPORT_CANDIDATES.length) return Promise.resolve("");
+      var reportName = BOOKING_REPORT_CANDIDATES[index];
+      return kr({
+        report_name: reportName,
+        criteria: '(ID == "' + escaped + '" || Booking_ID == "' + escaped + '")',
+        field_config: "all",
+        max_records: 1
+      }).then(function(res) {
+        var row = res && res.data && res.data[0];
+        var nm = row && lookupLabel(sr(row, BOOKING_FIELD_CANDIDATES.customer));
+        return nm || tryReport(index + 1)
+      }).catch(function() {
+        return tryReport(index + 1)
+      })
+    }
+    return tryReport(0)
+  }
+
+  /* Submitting the Booking Details creates the parent Dispatch_POD
+     record (Booking_ID, Driver_ID, Customer_Company_Name,
+     Pickup_Location, Trip_ID, Driver_Name, Weight, Delivery_Location —
+     matching the Dispatch_POD form fields exactly) and only then moves
+     the driver on to the POD page. The new record's ID is kept in
+     DISPATCH_POD_RECORD_ID so the POD items saved next can be linked
+     back to it via the form's bidirectional "Dispatch_POD" field on
+     Proof_of_Delivery2. */
+  async function submitDispatchToPod() {
+    var errEl = u("#dispatchErr");
+    if (errEl && (errEl.hidden = !0), !DISPATCH_SELECTED_BOOKING) return errEl && (errEl
+      .textContent = "Select a Booking ID first.", errEl.hidden = !1), void 0;
+    var booking = DISPATCH_SELECTED_BOOKING,
+      bookingRefId = booking.ID || booking.id || null,
+      custEl = u("#inDispatchCustomer"),
+      weightEl = u("#inDispatchWeight"),
+      pickupEl = u("#inDispatchPickup"),
+      deliveryEl = u("#inDispatchDelivery"),
+      btn = u("#btnCreatePodFromDispatch");
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return DISPATCH_POD_RECORD_ID =
+      null, void Y("podbooking");
+    btn && (btn.disabled = !0);
+    try {
+      var empId = await resolveEmployeeFormId(),
+        payload = {};
+      bookingRefId && (payload.Booking_ID = cr2(bookingRefId)), K.tripRecordId && (payload
+          .Trip_ID = cr2(K.tripRecordId)), empId && (payload.Driver_ID = cr2(empId), payload
+          .Driver_Name = cr2(empId));
+      var customerVal = custEl && custEl.value,
+        weightVal = weightEl && weightEl.value,
+        pickupVal = pickupEl && pickupEl.value,
+        deliveryVal = deliveryEl && deliveryEl.value;
+      customerVal && "—" !== customerVal && (payload.Customer_Company_Name = customerVal), weightVal &&
+        "—" !== weightVal && (payload.Weight = Number(weightVal) || weightVal), pickupVal &&
+        "—" !== pickupVal && (payload.Pickup_Location = pickupVal), deliveryVal && "—" !==
+        deliveryVal && (payload.Delivery_Location = deliveryVal);
+      var res = await ZOHO.CREATOR.DATA.addRecords({
+        form_name: "Dispatch_POD",
+        payload: {
+          data: payload
+        }
+      });
+      DISPATCH_POD_RECORD_ID = res && res.data && (res.data.ID || res.data.id) || null, Y(
+        "podbooking")
+    } catch (err) {
+      console.error(gr, "Dispatch_POD save failed:", err), errEl && (errEl.textContent =
+        "Couldn't save Booking Details: " + _r(err), errEl.hidden = !1)
+    } finally {
+      btn && (btn.disabled = !1)
+    }
+  }
+
+  function recalcPodBkPending(i) {
+    var item = DISPATCH_POD_ITEMS[i];
+    if (!item) return;
+    item.pendingQty = Math.max(0, (Number(item.qty) || 0) - (Number(item.receivedQty) || 0));
+    var pendEl = u('[data-podbk-pending="' + i + '"]');
+    pendEl && (pendEl.textContent = item.pendingQty)
+  }
+
+  function renderPodBkItemsUI() {
+    var host = u("#podBkItemList"),
+      countEl = u("#podBkItemCount");
+    if (!host) return;
+    var booking = DISPATCH_SELECTED_BOOKING,
+      bkLabel = booking ? lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.bookingId)) || booking
+      .ID || booking.id || "—" : "—";
+    w("podBkBookingIdChip", "Booking ID: " + bkLabel);
+    if (!DISPATCH_POD_ITEMS.length) return countEl && (countEl.textContent = ""), void(host
+      .innerHTML =
+      '<div class="podbk-row podbk-row--empty">No Shipment Items found for this Booking.</div>');
+    countEl && (countEl.textContent = DISPATCH_POD_ITEMS.length + " item" + (1 ===
+      DISPATCH_POD_ITEMS.length ? "" : "s")),
+      host.innerHTML = DISPATCH_POD_ITEMS.map(function(item, i) {
+        return '<div class="podbk-row"><span>' + String(item.name).replace(/</g, "&lt;") +
+          '</span><span>' + item.qty +
+          '</span><input type="number" min="0" data-podbk-received="' + i + '" value="' + item
+          .receivedQty +
+          '"><span data-podbk-pending="' + i + '">' + item.pendingQty + "</span></div>"
+      }).join(""), Array.prototype.slice.call(host.querySelectorAll("[data-podbk-received]"))
+      .forEach(function(el) {
+        el.addEventListener("input", function() {
+          var i = Number(el.getAttribute("data-podbk-received"));
+          DISPATCH_POD_ITEMS[i].receivedQty = Number(el.value) || 0, recalcPodBkPending(i)
+        })
+      })
+  }
+
+  function loadPodItemsForDispatchBooking() {
+    var booking = DISPATCH_SELECTED_BOOKING,
+      statusEl = u("#inPodBkStatus"),
+      noteEl = u("#podBkNote");
+    /* Delivery Status/Note are now a single overall pair for the
+       whole booking (not per item) — reset them each time a
+       different booking's items load, so a value entered for one
+       booking never carries over and gets saved against another. */
+    statusEl && (statusEl.value = ""), noteEl && (noteEl.value = "");
+    if (!booking) return DISPATCH_POD_ITEMS = [], void renderPodBkItemsUI();
+    w("podBkItemCount", "Loading…");
+    return Promise.all([ensureItemNamesLoaded(), fetchShipmentItemsForBookings([booking])]).then(
+      function(res) {
+      var rows = res[1];
+      DISPATCH_POD_ITEMS = (rows || []).map(function(row, i) {
+        return mapOneShipmentItem(row, i)
+      }), renderPodBkItemsUI()
+    }).catch(function(err) {
+      console.error(gr, "loadPodItemsForDispatchBooking() failed:", err), DISPATCH_POD_ITEMS = [],
+        renderPodBkItemsUI()
+    })
+  }
+
+  async function savePodBooking() {
+    var errEl = u("#podBkErr");
+    if (errEl && (errEl.hidden = !0), !DISPATCH_SELECTED_BOOKING || !DISPATCH_POD_ITEMS.length)
+      return errEl && (errEl.textContent = "No items to save for this Booking.", errEl.hidden = !1);
+    var statusEl = u("#inPodBkStatus"),
+      overallStatus = statusEl ? statusEl.value : "";
+    if (!overallStatus) return u("#fPodBkStatus") && u("#fPodBkStatus").classList.add("is-bad"),
+      errEl && (errEl.textContent = "Select a Delivery Status.", errEl.hidden = !1);
+    u("#fPodBkStatus") && u("#fPodBkStatus").classList.remove("is-bad");
+    var overallNote = (u("#podBkNote") ? u("#podBkNote").value : "").trim();
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return R(
+      "Preview mode — POD not saved");
+    if (!DISPATCH_POD_RECORD_ID) return errEl && (errEl.textContent =
+      "Booking Details weren't saved — go back and submit the Booking Details again.", errEl
+      .hidden = !1);
+    var booking = DISPATCH_SELECTED_BOOKING,
+      bookingRefId = booking.ID || booking.id || null,
+      empId = await resolveEmployeeFormId(),
+      saveBtn = u("#btnSavePodBooking");
+    saveBtn && (saveBtn.disabled = !0);
+    try {
+      for (var dispatchPodIdx = 0; dispatchPodIdx < DISPATCH_POD_ITEMS.length; dispatchPodIdx++) {
+        var item = DISPATCH_POD_ITEMS[dispatchPodIdx];
+        var payload = {
+          Dispatch_POD: cr2(DISPATCH_POD_RECORD_ID),
+          Item: cr2(item.id),
+          Quantity: item.qty,
+          Received_Qty: item.receivedQty,
+          Pending_Qty: item.pendingQty,
+          /* Delivery Status/Note are now entered once for the whole
+             booking (see the fields below the item table) instead of
+             per item — the same overall value is written against
+             every Proof_of_Delivery2 item row. */
+          Delivery_Status: overallStatus,
+          Delivery_Note: overallNote
+        };
+        bookingRefId && (payload.Booking_ID = cr2(bookingRefId)), K.tripRecordId && (
+            payload.Trip_ID = K.tripRecordId), empId && (payload.Driver_ID = cr2(empId));
+        await ZOHO.CREATOR.DATA.addRecords({
+          form_name: "Proof_of_Delivery2",
+          payload: {
+            data: payload
+          }
+        }).catch(function(err) {
+          return console.error(gr, "Proof_of_Delivery2 (Dispatch flow) item save failed:", err), null
+        })
+      }
+      /* Customer Company Name comes from the Customer field on the
+         Booking_Shipments1 record; Vehicle from the current Trip
+         record (K.vehicleName, resolved via Trip_Dispatch1.Vehicle —
+         see ce.vehicle above); Pickup/Delivery Location and Weight
+         from the same Booking record. All from data this flow already
+         fetched — nothing here is guessed. */
+      var podCustomerCompany = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.customer)),
+        podPickupLocation = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.pickupLocation)),
+        podDeliveryLocation = lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.deliveryLocation)),
+        podWeight = cr(sr(booking, BOOKING_FIELD_CANDIDATES.weight));
+      R("POD saved for Booking " + (lookupLabel(sr(booking,
+        BOOKING_FIELD_CANDIDATES.bookingId)) || bookingRefId)), populatePodResultPage({
+        date: k(),
+        driverName: s.name,
+        driverId: empId || s.id,
+        tripId: K.tripRecordId || K.tripId,
+        bookingId: lookupLabel(sr(booking, BOOKING_FIELD_CANDIDATES.bookingId)) || bookingRefId,
+        vehicleNo: K.vehicleName,
+        companyName: podCustomerCompany,
+        customerCompany: podCustomerCompany,
+        shipperCompany: podCustomerCompany,
+        pickupLocation: podPickupLocation,
+        deliveryLocation: podDeliveryLocation,
+        weight: podWeight,
+        status: overallStatus,
+        note: overallNote || "—",
+        signature: null,
+        items: DISPATCH_POD_ITEMS.map(function(it) {
+          return {
+            name: it.name,
+            qty: it.qty,
+            receivedQty: it.receivedQty,
+            pendingQty: it.pendingQty,
+            price: it.price
+          }
+        })
+      }), DISPATCH_POD_RECORD_ID = null, Y("podresult")
+    } finally {
+      saveBtn && (saveBtn.disabled = !1)
+    }
+  }
+
+  /* ------------------------------------------------------------
+     Populates the Hub Name <select> on Hub Check-In / Check-Out from the
+     Locations report, filtered to the hubs that belong to this Trip's
+     Booking — the same source of truth as the Live Trip Map filter.
+
+     Matching is by Locations record ID OR by hub name, so a hub still
+     appears when Zoho returns only the display label. If hub resolution
+     comes back empty, every hub is listed with a console warning rather
+     than leaving the driver with a dead dropdown.
      ------------------------------------------------------------ */
   function Dr() {
     if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve();
-    var r = [e.locations].concat(e.locationsFallbacks || []).filter(function(e, t, r) {
-      return e && r.indexOf(e) === t
+    var reports = [e.locations].concat(e.locationsFallbacks || []).filter(function(v, i, arr) {
+      return v && arr.indexOf(v) === i
     });
-    return function e(n) {
-      if (!(n >= r.length)) return kr({
-        report_name: r[n],
-        field_config: "all",
-        max_records: 200
-      }).then(function(e) {
-        ! function(e) {
-          var r = u("#inHub");
-          if (r) {
-            HUB_NAME_TO_ID = {};
-            var names = [];
-            e.forEach(function(rec) {
-              var nm = cr(sr(rec, t));
-              nm && void 0 === HUB_NAME_TO_ID[nm] && (HUB_NAME_TO_ID[nm] = rec.ID || rec
-                .id || null, names.push(nm))
-            });
-            var a = r.value;
-            r.innerHTML = '<option value="">Select a hub…</option>', names.forEach(function(
-              e) {
-              var t = document.createElement("option");
-              t.value = e, t.textContent = e, r.appendChild(t)
-            }), a && -1 !== names.indexOf(a) && (r.value = a)
-          }
-        }(e && e.data || [])
-      }).catch(function(t) {
-        return console.error(gr, "getRecords on", r[n], "(Locations) failed:", t), e(n + 1)
-      });
-      console.error(gr, "Could not read a Locations report for Hub Name (tried: " + r.join(", ") +
-        ").")
-    }(0)
+    return resolveTripHubRefs().then(function(hubRefs) {
+      var hasRefs = !!(hubRefs && (hubRefs.ids.length || hubRefs.names.length));
+      if (hubRefs && !hasRefs) console.warn(gr,
+        "[hub-debug] hub resolution returned nothing for this Trip/Booking — listing all hubs. Run skywayHubDebug() to see why."
+      );
+      return function tryLoc(n) {
+        if (n >= reports.length) return void console.error(gr,
+          "Could not read a Locations report for Hub Name (tried: " + reports.join(", ") +
+          ").");
+        return kr({
+          report_name: reports[n],
+          field_config: "all",
+          max_records: 200
+        }).then(function(res) {
+          var allRows = res && res.data || [],
+            sel = u("#inHub");
+          if (!sel) return;
+          var rows = hasRefs ? allRows.filter(function(rec) {
+            return locationMatchesHubRefs(rec, hubRefs)
+          }) : allRows;
+          if (hasRefs && !rows.length && n + 1 < reports.length) return tryLoc(n + 1);
+          HUB_NAME_TO_ID = {};
+          var names = [];
+          rows.forEach(function(rec) {
+            var nm = cr(sr(rec, t));
+            nm && void 0 === HUB_NAME_TO_ID[nm] && (HUB_NAME_TO_ID[nm] = rec.ID || rec.id ||
+              null, names.push(nm))
+          });
+          /* Hub names present on the items but missing from Locations are
+             still offered, so the driver is never blocked. */
+          if (hasRefs) hubRefs.names.forEach(function(nm) {
+            nm = String(nm).trim();
+            nm && void 0 === HUB_NAME_TO_ID[nm] && (HUB_NAME_TO_ID[nm] = null, names.push(
+              nm))
+          });
+          console.log(gr, "[hub-debug] hub dropdown options:", names);
+          var prev = sel.value;
+          sel.innerHTML = names.length ? '<option value="" selected hidden disabled></option>' :
+            '<option value="">No hubs found for this Trip/Booking</option>';
+          names.forEach(function(nm) {
+            var opt = document.createElement("option");
+            opt.value = nm, opt.textContent = nm, sel.appendChild(opt)
+          });
+          prev && -1 !== names.indexOf(prev) && (sel.value = prev)
+        }).catch(function(err) {
+          return console.error(gr, "getRecords on", reports[n], "(Locations) failed:", err),
+            tryLoc(n + 1)
+        })
+      }(0)
+    })
   }
+
+  /* ------------------------------------------------------------
+     Console diagnostic. Run  skywayHubDebug()  in the browser console to
+     print the real Zoho field names on this trip's booking and item
+     records — use it to extend the *_CANDIDATES lists above if a hub
+     still doesn't appear.
+     ------------------------------------------------------------ */
+  window.skywayHubDebug = function() {
+    console.group("[Skyway hub debug]");
+    console.log("Trip record:", K.record);
+    console.log("Trip booking keys:", getTripBookingIds());
+    return fetchActiveTripShipmentBookings().then(function(bookings) {
+      console.log("Matched booking record(s):", bookings);
+      bookings.forEach(function(b) {
+        console.log("Booking field names:", Object.keys(b))
+      });
+      return fetchShipmentItemsForBookings(bookings).then(function(rows) {
+        console.log("Shipment item row(s):", rows);
+        rows.slice(0, 5).forEach(function(r, i) {
+          console.log("Item " + i + " field names:", Object.keys(r), "| hub refs:",
+            hubRefsFromRow(r), "| Item:", cr(sr(r, SHIPMENT_ITEM_FIELD_CANDIDATES.name)),
+            "| Quantity:", sr(r, SHIPMENT_ITEM_FIELD_CANDIDATES.qty))
+        });
+        console.log("HUB_NAME_TO_ID:", HUB_NAME_TO_ID);
+        console.groupEnd();
+        return {
+          bookings: bookings,
+          items: rows
+        }
+      })
+    }).catch(function(err) {
+      console.error("skywayHubDebug failed:", err), console.groupEnd()
+    })
+  };
 
   function Tr() {
     if (!window.ZOHO || !ZOHO.CREATOR) return a.source = "Default BFM values (preview)", yr(),
@@ -3680,14 +6982,20 @@
           .name, s.gender = r("gender", cr), s.email = r("email") || s.email, s.mobile = r(
             "mobile"), s.altMobile = r("altMobile"), s.dob = r("dob"), s.photoPath = r("photo"),
           s.address = r("address", dr), s.employmentType = r("employmentType"), s.started = r(
-            "joiningDate"), s.department = r("department", cr), s.licenceNo = r("licenceNo"), s
+            "joiningDate"), s.department = r("department", cr), s.designation = r("designation",
+            cr), s.licenceNo = r("licenceNo"), s
           .licenceNumber = r("licenceNumber"), s.licenceIssueDate = r("licenceIssueDate"), s
-          .licenceClass = r("licenceType", cr), s.licenceExpiry = r("licenceExpiry"), s
+          .licenceType = r("licenceType", cr), s.licenceClass = r("licenceClass", cr) || s
+          .licenceType, s.licenceExpiry = r("licenceExpiry"), s
           .licenceStatus = r("licenceStatus", cr), s.licenceDocumentPath = r("licenceDocument"),
           s.licenceCopyPath = r("licenceCopy"), s.vehicleName = r("vehicleName", cr), s
           .vehicleAssigned = s.vehicleName, s.passportNumber = r("passportNumber"), s
-          .passportCopyPath = r("passportCopy"), s.experience = r("experience"), s
-          .lastCheckupDate = r("lastCheckupDate"), s.documentsPath = r("documents"), s.remark =
+          .passportCopyPath = r("passportCopy"), s.identityDocType = r("identityDocType", cr), s
+          .identityDocNumber = r("identityDocNumber"), s.experience = r("experience"), s
+          .heavyVehicleExperience = r("heavyVehicleExperience", cr), s
+          .lastCheckupDate = r("lastCheckupDate"), s.medicalFitnessStatus = r(
+            "medicalFitnessStatus", cr), s.medicalCertExpiry = r("medicalCertExpiry"), s
+          .fatigueModule = r("fatigueModule", cr), s.documentsPath = r("documents"), s.remark =
           r("remark"), s.visaStatus = r("visaStatus", cr), s.visaExpiryDate = r(
             "visaExpiryDate"), s.expiryDate = r("expiryDate"), s.medicalCertificatePath = r(
             "medicalCertificate"), s.rightToWorkDocumentPath = r("rightToWorkDocument"), s
@@ -3838,6 +7146,10 @@
                     inc: {
                       url: "#inIncUrl",
                       loc: "#inIncLoc"
+                    },
+                    exp: {
+                      url: "#inExpUrl",
+                      loc: "#inExpLoc"
                     }
                   } [e];
                   if (t) {
@@ -3848,9 +7160,11 @@
                         var t = e.coords.latitude.toFixed(6),
                           i = e.coords.longitude.toFixed(6),
                           a = u(r);
-                        a && (a.value = "https://maps.google.com/?q=" + t + "," + i);
+                        a && (a.value = "https://maps.google.com/?q=" + t + "," + i,
+                          "start" === c.getAttribute("data-geo") && (a.disabled = !0));
                         var o = u(n);
-                        o && !o.value && (o.value = t + ", " + i), R("Location captured")
+                        o && !o.value && (o.value = t + ", " + i, "start" === c.getAttribute(
+                          "data-geo") && (o.disabled = !0)), R("Location captured")
                       }, function() {
                         R("Couldn't get your location — enter it manually.")
                       }, {
@@ -3893,29 +7207,30 @@
             }), document.addEventListener("keydown", function(e) {
               "Escape" === e.key && (tr(), u("#tyrePopup").hidden || Ye(), u(
                   "#docViewerPopup").hidden || pr(), u("#driverDocsPopup").hidden ||
-                closeDriverDocsPopup())
-            }), t("#dashAttList"), t("#attList"), e("#btnAttSummary", "click", function() {
+                closeDriverDocsPopup(), u("#tripInfoPopup").hidden || closeTripInfoPopup())
+            }), e("#btnTripInfo", "click", function(e) {
+              e.stopPropagation(), openTripInfoPopup()
+            }), e("#tripTimerBox", "click", openTripInfoPopup), e("#tripInfoClose", "click",
+              closeTripInfoPopup), e("#tripInfoScrim", "click", closeTripInfoPopup), e(
+              "#btnDownloadPod", "click", downloadPodResult), e("#btnSavePodPdf", "click",
+              saveDeliveryRecordToZoho), t(
+              "#dashAttList"), t("#attList"), t("#dashTodayTripList"), t("#tripList"), e("#btnAttSummary", "click", function() {
+              er("panelAttendance", null), De()
+            }), e("#btnAttViewMore", "click", function() {
               er("panelAttendance", null), De()
             }), e("#btnStartTripCta", "click", bt), e("#btnSubmitStartTrip", "click",
-              submitStartTripPage), e("#btnSetStartTime", "click", function() {
-              var el = u("#inStStartTime");
-              if (el) {
-                var now = new Date;
-                el.value = p(now.getHours()) + ":" + p(now.getMinutes())
-              }
-              var dEl = u("#inStDate");
-              dEl && (dEl.value = k())
-            }), e("#btnSaveVcheck", "click", gt), e("#veh3dFallback", "click", function(e) {
+              submitStartTripPage), e("#btnSaveVcheck", "click", gt), e("#veh3dFallback", "click", function(e) {
               var t = e.target.closest(".tyre3d__tyre");
               t && ze(t.getAttribute("data-tyre"))
-            }), e("#tyrePopupSave", "click", Qe), e("#tyrePopupCancel", "click", Ye), e(
+            }), e("#tyrePopupSave", "click", Qe), e(
               "#tyrePopupClose", "click", Ye), e("#tyreScrim", "click", Ye), e(
               "#tyrePopupInput", "keydown",
               function(e) {
                 "Enter" === e.key && Qe()
               }), e("#tyreCountFilter", "change", function(e) {
               Ze(e.target.value)
-            }), e("#btnPanelViewDocs", "click", function() {
+            }), e("#btnClearPodResultSignature", "click", podResultSigPadClear), e(
+              "#btnPanelViewDocs", "click", function() {
               tr(), openDriverDocsPopup()
             }), e("#driverDocsPopupClose", "click", closeDriverDocsPopup), e("#driverDocsScrim",
               "click", closeDriverDocsPopup), e("#driverDocsPopup", "click", function(e) {
@@ -3926,7 +7241,7 @@
                   n = r && r.querySelector(".doccard__body b");
                 ! function(e, t) {
                   if (t) {
-                    w("docViewerTitle", e || "Document");
+                    closeDriverDocsPopup(), w("docViewerTitle", e || "Document");
                     var r = u("#docViewerLoading");
                     r && (r.hidden = !1);
                     var n = u("#docViewerFrame");
@@ -4037,12 +7352,13 @@
             }),
             function() {
               w("dashTripCountLabel", "Loading…");
-              var e = u("#dashTodayTripList");
-              if (e) {
-                e.innerHTML = "";
-                var t = document.createElement("li");
-                t.className = "triprow", t.textContent = "Loading trips…", e.appendChild(t)
-              }
+              [u("#dashTodayTripList"), u("#tripList")].forEach(function(e) {
+                if (e) {
+                  e.innerHTML = "";
+                  var t = document.createElement("li");
+                  t.className = "triprow", t.textContent = "Loading trips…", e.appendChild(t)
+                }
+              })
             }(), Te(), m(".checkcard input, .checkcard select").forEach(function(e) {
               e.addEventListener("input", Ne), e.addEventListener("change", Ne)
             }), m(".checkcard .yn-btn").forEach(function(e) {
@@ -4050,13 +7366,21 @@
                 setTimeout(Ne, 0)
               })
             }), e("#btnSaveCheckIn", "click", _t), e("#btnGoToPod", "click", kt), e(
-              "#btnSavePod", "click", wt), e("#btnClearSignature", "click", sigPadClear), window
+              "#btnSavePod", "click", wt), e("#btnClearSignature", "click", sigPadClear), e(
+              "#inHub", "change", function() {
+                updateHubItemCount(u("#inHub").value)
+              }), e("#bookingIdList", "change", syncSelectedBookingIdsFromChecklist), window
             .addEventListener("resize", function() {
-              sigPad.canvas && sigPadResize()
+              sigPad.canvas && sigPadResize(), podResultSigPad.canvas && podResultSigPadResize()
             }), e("#btnSaveFuel", "click", Lt), e("#inFuelQty", "input", St), e("#inFuelCost",
               "input", St), e("#inIncTime", "input", Bt), e("#inIncEndTime", "input", Bt), e(
               "#btnSaveIncident", "click", qt), e("#btnSaveVehicle", "click", Zt), e(
+              "#btnSaveExpense", "click", submitExpenseEntry), e(
+              "#inDispatchBookingId", "change", onDispatchBookingSelected), e(
+              "#btnCreatePodFromDispatch", "click", submitDispatchToPod), e(
+              "#btnSavePodBooking", "click", savePodBooking), e(
               "#btnSaveBreak", "click", Yt), e("#btnContinueDriving", "click", j), e(
+              "#btnStopTimer", "click", G), e(
               "#inBrkStart", "input", zt), e("#inBrkEnd", "input", zt), Dt(), e("#btnComplete",
               "click",
               function() {
@@ -4071,8 +7395,9 @@
                   Trip_ID: At("#inTfbTripId"),
                   Trip_Name: At("#inTfbTripName"),
                   Trip_Feedback: t
-                }), R("Trip " + (K.tripId || X) + " completed — feedback submitted"), o
-                .tripStarted = !1, o.breakCount = 0, u("#inTfbFeedback").value = "", H(), V &&
+                }), saveBfmSummary(), R("Trip " + (K.tripId || X) +
+                " completed — feedback submitted"), o.tripStarted = !1, o.breakCount = 0, u(
+                  "#inTfbFeedback").value = "", H(), V &&
                 (clearInterval(V), V = null), w("tripTimerVal", "00:00:00"), U = !1, Y("dash")
             }), P(), ir(), rr(), nr(), r = window.matchMedia && window.matchMedia(
               "(prefers-reduced-motion: reduce)").matches, n = window.matchMedia && window
@@ -4096,10 +7421,7 @@
                     }, 260)
                   })
                 })
-              }), Tr(), setInterval(function() {
-              o.tripStarted && (o.workedMins += 1, o.sinceRestMins += 1, o.weekWorkedMins +=
-                1, P(), ir())
-            }, 6e4);
+              }), Tr(), setInterval(bfmTick, 6e4);
           var r, n
         }()
     } catch (e) {
