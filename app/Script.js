@@ -167,6 +167,16 @@
       view: "dash",
       tripStarted: !1,
       startTime: "06:30",
+      /* Full local timestamp used by the trip timer and restore flow. */
+      startTs: 0,
+      startTripRecordId: null,
+      activeTripRecordId: null,
+      /* Trip finished this session: ke() must never resume it, even if
+         Creator is slow to flip its Trip_Status. */
+      completedTripRecordId: null,
+      restoredTrip: !1,
+      /* One toast queued during restore, shown once the boot loader is gone. */
+      pendingToast: "",
       endTime: "16:35",
       /* tierWorked[i] = minutes worked since tier i last had a qualifying
          rest; tierExtraMins[i] = minutes logged while tier i was in
@@ -469,8 +479,9 @@
             e.parentNode && e.remove()
           }, 600));
         try {
-          Y("dash")
+          Y(o.restoredTrip || o.tripStarted ? "trip" : "dash")
         } catch (e) {}
+        o.pendingToast && (R(o.pendingToast), o.pendingToast = "")
       }, 80)
     }
   }
@@ -869,17 +880,21 @@
         }), o.weekWorkedMins += 1
       }
     }
-    P(), ir()
+    o.tripStarted && saveTripSnapshot(), P(), ir()
   }
 
   function B(e) {
-    var t = _(e);
-    if (null !== t) {
-      var r = new Date,
-        n = 60 * r.getHours() + r.getMinutes() - t;
-      n < 0 && (n += 1440), o.tierWorked[0] = n, o.tierWorked[4] = n, o.weekWorkedMins += n, o
-        .restAlertShown = !1, o.restEscalated = !1, F(), P(), ir()
+    var t = "number" == typeof e ? e : o.startTs || 0,
+      r = t ? Math.max(0, Math.floor((Date.now() - t) / 6e4)) : null;
+    if (null === r) {
+      var n = _(e);
+      if (null === n) return;
+      var i = new Date;
+      r = 60 * i.getHours() + i.getMinutes() - n, r < 0 && (r += 1440)
     }
+    o.tierWorked = a.tiers.map(function() {
+      return r
+    }), o.weekWorkedMins += r, o.restAlertShown = !1, o.restEscalated = !1, F(), P(), ir()
   }
 
   function H() {
@@ -888,19 +903,106 @@
   var V = null;
 
   function q() {
-    if (o.tripStarted) {
-      var e = _(o.startTime);
-      if (null !== e) {
-        var t = new Date,
-          r = 3600 * t.getHours() + 60 * t.getMinutes() + t.getSeconds() - 60 * e;
-        r < 0 && (r += 86400), w("tripTimerVal", p(Math.floor(r / 3600)) + ":" + p(Math.floor(r %
-          3600 / 60)) + ":" + p(r % 60))
-      }
+    if (o.tripStarted && o.startTs) {
+      var e = Math.max(0, Math.floor((Date.now() - o.startTs) / 1e3));
+      w("tripTimerVal", p(Math.floor(e / 3600)) + ":" + p(Math.floor(e % 3600 / 60)) + ":" + p(e %
+        60))
     }
   }
 
   function W() {
     V || (q(), V = setInterval(q, 1e3))
+  }
+
+  function tripSnapshotKey() {
+    return K && K.tripRecordId && s.recordId ? "skyway.trip." + K.tripRecordId + "." + s.recordId : ""
+  }
+
+  function saveTripSnapshot() {
+    if (!o.tripStarted) return;
+    var e = tripSnapshotKey();
+    if (!e) return;
+    try {
+      localStorage.setItem(e, JSON.stringify({
+        startTs: o.startTs,
+        onBreak: o.onBreak,
+        breakStartTs: o.onBreak ? Date.now() - 6e4 * (o.breakElapsedMins || 0) : 0,
+        breakElapsedMins: o.breakElapsedMins || 0,
+        restTargetMins: o.restTargetMins || 0,
+        restCompleteNotified: !!o.restCompleteNotified,
+        tierWorked: o.tierWorked || [],
+        tierExtraMins: o.tierExtraMins || [],
+        tierNotified: o.tierNotified || [],
+        breakCount: o.breakCount || 0,
+        weekWorkedMins: o.weekWorkedMins || 0,
+        score: s.score,
+        savedAt: Date.now()
+      }))
+    } catch (e) {
+      console.warn(gr, "trip snapshot could not be saved:", e)
+    }
+  }
+
+  function readTripSnapshot() {
+    var e = tripSnapshotKey();
+    if (!e) return null;
+    try {
+      var t = JSON.parse(localStorage.getItem(e) || "null");
+      return t && t.startTs && t.savedAt ? t : null
+    } catch (e) {
+      return console.warn(gr, "trip snapshot could not be read:", e), null
+    }
+  }
+
+  function clearTripSnapshot() {
+    var e = tripSnapshotKey();
+    if (!e) return;
+    try {
+      localStorage.removeItem(e)
+    } catch (e) {
+      console.warn(gr, "trip snapshot could not be cleared:", e)
+    }
+  }
+
+  /* Restores the BFM counters from a localStorage snapshot and fast-forwards
+     them across the time the widget was closed (savedAt → now). Needs
+     o.startTs already set. Returns the labels of tiers now in breach that
+     the snapshot did not already know about. */
+  function restoreBfmSnapshot(e) {
+    var gap = Math.max(0, Math.floor((Date.now() - e.savedAt) / 6e4)),
+      /* No tier can have worked longer than the trip has been running. */
+      cap = Math.max(0, Math.floor((Date.now() - o.startTs) / 6e4)),
+      num = function(v) {
+        return Math.max(0, Number(v) || 0)
+      },
+      fresh = [];
+    o.onBreak = !!e.onBreak, o.breakElapsedMins = num(e.breakElapsedMins), o.restTargetMins = num(e
+        .restTargetMins), o.restCompleteNotified = !!e.restCompleteNotified, o.tierWorked = a.tiers
+      .map(function(t, i) {
+        return num(e.tierWorked && e.tierWorked[i])
+      }), o.tierExtraMins = a.tiers.map(function(t, i) {
+        return num(e.tierExtraMins && e.tierExtraMins[i])
+      }), o.tierNotified = a.tiers.map(function(t, i) {
+        return !!(e.tierNotified && e.tierNotified[i])
+      }), o.breakCount = num(e.breakCount), o.weekWorkedMins = num(e.weekWorkedMins), null != e
+      .score && (s.score = Number(e.score) || 0);
+    /* Still on break: the break kept running while the widget was closed. */
+    if (o.onBreak) o.breakElapsedMins += gap, o.restTargetMins && o.breakElapsedMins >= o
+      .restTargetMins && (o.restCompleteNotified = !0);
+    else o.tierWorked = o.tierWorked.map(function(v) {
+      return Math.min(cap, v + gap)
+    }), o.weekWorkedMins += gap;
+    /* Breaches that happened (or were already alerted) before this restore
+       must never raise alerts or Creator rows again: mark them notified
+       BEFORE the first P() runs. tierExtraMins is deliberately left alone,
+       so overage penalties only accrue for minutes counted live from now
+       on, not for time that passed while the widget was closed. */
+    a.tiers.forEach(function(tier, i) {
+      o.tierWorked[i] >= tier.maxWorkMins && (o.tierNotified[i] || fresh.push(tier.label), o
+        .tierNotified[i] = !0)
+    }), console.log(gr, "restore: BFM snapshot applied; fast-forwarded", gap, "min", o.onBreak ?
+      "(on break)" : "");
+    return fresh
   }
   var U = !1;
 
@@ -969,13 +1071,13 @@
 
   function G() {
     o.tripStarted && (o.onBreak = !0, o.breakElapsedMins = 0, o.restTargetMins =
-      computeRestTargetMins(), o.restCompleteNotified = !1, V && (clearInterval(V), V = null),
-      Z(), persistBfmOnPause(), saveBfmSummary())
+      computeRestTargetMins(), o.restCompleteNotified = !1, W(), Z(), persistBfmOnPause(),
+      saveTripSnapshot(), saveBfmSummary())
   }
 
   function j() {
     o.tripStarted && (o.onBreak = !1, W(), Z(), "trip" !== o.view && Y("trip"),
-      persistBfmOnResume(), P(), ir())
+      persistBfmOnResume(), saveTripSnapshot(), P(), ir())
   }
 
   window.addEventListener("popstate", function() {
@@ -1266,7 +1368,7 @@
     var e = K.record;
     if (e) {
       var t = le(e, "tripId") || "—",
-        r = le(e, "route") || "—";
+        r = tripRoute(e);
       w("atdHeaderTripId", t), w("atdHeaderRoute", r), w("atdTripId", t), w("atdRoutePill", r), w(
           "atdTripName", le(e, "tripName") || "—"), w("atdTripType", le(e, "tripType") || "—"), w(
           "atdTripStatus", le(e, "status") || "—"), w("atdRoute", r), w("atdBookingDate", le(e,
@@ -1473,7 +1575,8 @@
       expectedDelivery: ["Expected_Delivery", "Expected_Delivery_Date", "Planned_Delivery_Date"],
       trackingNumber: ["Tracking_Number", "Tracking_No", "Tracking_ID"],
       tripCompletion: ["Trip_Completion_Date_Time"],
-      actualDeparture: ["Actual_Departure_Date_Time"]
+      actualDeparture: ["Actual_Departure_Date_Time"],
+      startingOdometer: ["Starting_Odometer"]
     };
 
   function le(e, t) {
@@ -1489,6 +1592,36 @@
       "number" == typeof r ? String(r) : r.ID || r.zc_id || r.id || ""
   }
 
+  function tripRoute(e) {
+    var t = le(e, "route");
+    if (t) return t;
+    var r = le(e, "fromLocation"),
+      n = le(e, "toLocation");
+    return r || n ? [r, n].filter(Boolean).join(" → ") : "—"
+  }
+
+  /* True while the driver already has a trip in progress (restored from
+     Creator on boot, or started this session). Kept as a function on
+     purpose: fe()/feCompact() shadow `o` with a local, so they can't read
+     o.activeTripRecordId directly. */
+  function hasActiveTrip() {
+    return !!(o.tripStarted || o.activeTripRecordId)
+  }
+
+  /* Adjusts the "Start Trip" button of a trip row for an in-progress trip:
+     the active trip's button becomes "Resume trip", every other trip's
+     button is disabled (the click handler shows "Complete your active trip
+     first"). */
+  function tripStartControl(li, status) {
+    var btn = li.querySelector("[data-start-trip]");
+    if (!btn) return;
+    if ("In Transit" === status) {
+      btn.setAttribute("data-nav", "trip"), btn.removeAttribute("data-start-trip");
+      var label = btn.querySelector("span");
+      (label || btn).textContent = "Resume trip"
+    } else hasActiveTrip() && (btn.setAttribute("aria-disabled", "true"), btn.style.opacity = ".5")
+  }
+
   function ue(e, t) {
     return String(e || "").trim() === String(t || "").trim()
   }
@@ -1497,7 +1630,7 @@
     if (!e) return 0;
     var t = Date.parse(e);
     if (!isNaN(t)) return t;
-    var r = String(e).match(/(\d{1,2})-(\w{3})-(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    var r = String(e).match(/(\d{1,2})-(\w{3})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
     if (r) {
       var n = {
         Jan: 0,
@@ -1514,7 +1647,7 @@
         Dec: 11
       } [r[2]];
       if (void 0 !== n) {
-        var i = new Date(+r[3], n, +r[1], +(r[4] || 0), +(r[5] || 0));
+        var i = new Date(+r[3], n, +r[1], +(r[4] || 0), +(r[5] || 0), +(r[6] || 0));
         if (!isNaN(i.getTime())) return i.getTime()
       }
     }
@@ -1558,7 +1691,8 @@
       c = isSameDay(me(le(e, "startDateTime"))),
       tagLabel = c ? "Today's Assigned Trip" : "Upcoming Trip",
       l = document.createElement("li");
-    return l.className = "triprow " + ve(s), l.setAttribute("data-trip-id", t), l.innerHTML =
+    c = "In Transit" === s || c, tagLabel = "In Transit" === s ? "Active trip" : tagLabel;
+    return n = tripRoute(e), l.className = "triprow " + ve(s), l.setAttribute("data-trip-id", t), l.innerHTML =
       '<div class="triprow__main"><span class="triprow__tag"></span><b class="triprow__id"></b><span class="triprow__route" data-name></span><span class="triprow__meta" data-route></span><span class="triprow__meta" data-locations></span><span class="triprow__meta" data-date></span></div><span class="triprow__status"></span><div class="triprow__actions">' +
       (c ?
         '<button type="button" class="triprow__view is-start" data-nav="vcheck" data-start-trip data-trip-id="' +
@@ -1569,7 +1703,7 @@
       t, l.querySelector("[data-name]").textContent = r, l.querySelector("[data-route]")
       .textContent = "Route: " + n, l.querySelector("[data-locations]").textContent = "From: " + i +
       "  ·  To: " + a, l.querySelector("[data-date]").textContent = "Start: " + o, l.querySelector(
-        ".triprow__status").textContent = s, l
+        ".triprow__status").textContent = s, tripStartControl(l, s), l
   }
 
   /* Compact row used only on the Today's trip main-page card: shows the
@@ -1577,6 +1711,7 @@
      Start Date only — no Trip Name, Route or Status. The full-detail row
      (fe) is still used inside the "View More" popup. */
   function feCompact(e) {
+    var activeTrip = "In Transit" === le(e, "status");
     var t = le(e, "tripId") || "—",
       i = le(e, "fromLocation") || "—",
       a = le(e, "toLocation") || "—",
@@ -1584,6 +1719,7 @@
       c = isSameDay(me(le(e, "startDateTime"))),
       tagLabel = c ? "Today's Assigned Trip" : "Upcoming Trip",
       l = document.createElement("li");
+    c = activeTrip || c, tagLabel = activeTrip ? "Active trip" : tagLabel;
     return l.className = "triprow triprow--compact trip-highlight", l.setAttribute(
         "data-trip-id", t), l.innerHTML =
       '<div class="trip-highlight__top"><span class="trip-highlight__tag"></span><div class="trip-highlight__actions">' +
@@ -1598,10 +1734,19 @@
       l.querySelector("[data-locations]").innerHTML = '<svg width="12" height="12" aria-hidden="true"><use href="#i-pin"/></svg><b>From: ' +
       i +
       '</b> <svg width="11" height="11" aria-hidden="true"><use href="#i-arrow-right"/></svg> <svg width="12" height="12" aria-hidden="true"><use href="#i-pin"/></svg><b>To: ' +
-      a + "</b>", l.querySelector("[data-date]").textContent = "Start: " + o, l
+      a + "</b>", l.querySelector("[data-date]").textContent = "Start: " + o, tripStartControl(l, activeTrip ?
+        "In Transit" : ""), l
   }
 
-  function he(e) {
+  /* `act` = the driver's in-transit trips (ID-verified by ke()); omitted →
+     fall back to every In Transit row in `e`. */
+  function he(e, act) {
+    var activeTrips = act || e.filter(function(e) {
+      return "In Transit" === le(e, "status")
+    }).slice().sort(function(e, t) {
+      return me(le(t, "startDateTime")) - me(le(e, "startDateTime"))
+    });
+    o.activeTripRecordId = activeTrips.length ? activeTrips[0].ID || activeTrips[0].id || null : null;
     var t = e.filter(function(e) {
       return "Assigned" === le(e, "status") && function(e) {
         if (!e) return !1;
@@ -1611,18 +1756,19 @@
     }).slice().sort(function(e, t) {
       return me(le(e, "startDateTime")) - me(le(t, "startDateTime"))
     });
-    w("dashTripCountLabel", t.length ? t.length + (1 === t.length ? " trip" : " trips") :
+    t = activeTrips.concat(t), w("dashTripCountLabel", t.length ? t.length + (1 === t.length ? " trip" : " trips") :
       "No trips"), ge = t;
     var r = u("#startTopLabel");
     r && (r.textContent = t.length ? "Trip " + (le(t[0], "tripId") || "—") + " · ready" :
       "No trip assigned yet");
-    t.forEach(function(e) {
+    activeTrips.length && r && (r.textContent = "Trip " + (le(activeTrips[0], "tripId") || "—") +
+      " · in transit"), t.forEach(function(e) {
       ye[le(e, "tripId") || "—"] = e
     });
     var n = u("#dashTodayTripList"),
       todayItem = null,
       upcomingItem = null;
-    if (t.length && (todayItem = t.filter(function(e) {
+    if (t.length && (todayItem = activeTrips[0] || t.filter(function(e) {
         return isSameDay(me(le(e, "startDateTime")))
       })[0] || null, upcomingItem = t.filter(function(e) {
         return e !== todayItem
@@ -1754,15 +1900,269 @@
           return ue(le(e, "driverName"), t) || ue(le(e, "secondaryDriverName"), t)
         }(t, e)
       });
+      /* The driver's in-transit trip(s): matched by the Primary/Secondary
+         Driver lookup ID; the name match above is only the fallback for a
+         trip whose driver IDs are missing. A trip finished in this session
+         is never treated as active, even if Creator is slow to flip it. */
+      var activeTrips = t.filter(function(e) {
+        if ("In Transit" !== le(e, "status") || (e.ID || e.id) === o.completedTripRecordId) return !1;
+        var t = de(e, "primaryDriver"),
+          n = de(e, "secondaryDriverName");
+        return s.recordId && (t || n) ? t === s.recordId || n === s.recordId : r.indexOf(e) > -1
+      }).sort(function(e, t) {
+        return me(le(t, "startDateTime")) - me(le(e, "startDateTime"))
+      });
+      activeTrips.forEach(function(e) {
+        r.indexOf(e) < 0 && r.push(e)
+      });
       if (console.log(gr, se, "exact Driver Name matches for", e, ":", r.length, "of", t
-        .length), ye = {}, !r.length) return pe("No trip assigned"), void be([], [],
-        "No trips assigned to this driver.");
-      be(r, he(r).map(function(e) {
+        .length, "| in-transit trips for this driver:", activeTrips.length), ye = {}, !r.length)
+        return pe("No trip assigned"), void be([], [], "No trips assigned to this driver.");
+      var displayedTrips = he(r, activeTrips);
+      be(r, displayedTrips.map(function(e) {
         return le(e, "tripId")
-      }))
+      }));
+      if (!activeTrips.length) return null;
+      activeTrips.length > 1 && console.warn(gr, "multiple in-transit trips found; restoring the latest", activeTrips.map(function(e) {
+        return le(e, "tripId")
+      }));
+      var activeId = activeTrips[0].ID || activeTrips[0].id;
+      return o.tripStarted && K.tripRecordId === activeId ? (console.log(gr,
+        "restore: trip already active in this session — nothing to restore"), null) : restoreActiveTrip(activeTrips[0]).then(function(resumed) {
+        /* Already ended (every Start_Trip_in_Driver row has an End_Time): it
+           must not show as an active trip on the Dashboard either. */
+        resumed || (he(r, []), console.log(gr, "restore: stale In Transit trip ignored", le(activeTrips[0], "tripId")))
+      })
     }).catch(function(e) {
       console.error(gr, "loadDriverTripsAndRender failed:", e), ye = {}, pe(
         "Couldn't load trip"), be([], [], "Couldn't load trips for this driver.")
+    })
+  }
+
+  /* ============================================================
+     ACTIVE-TRIP RESTORE
+     Creator is the source of truth: a Trip_Dispatch row whose
+     Trip_Status is "In Transit" and whose Primary/Secondary Driver is the
+     signed-in driver means that driver is mid-trip, whatever this
+     browser remembers. restoreActiveTrip() rebuilds the in-memory trip
+     state from that row (plus the driver's open Start_Trip_in_Driver
+     record) and drops the driver back into the Trip view. It is
+     READ-ONLY toward Creator: no addRecords / updateRecords /
+     Driver_BFM_Notification rows are ever written while restoring.
+     ============================================================ */
+  function restoreLookupId(e) {
+    var t = null == e ? "" : "object" == typeof e ? e.ID || e.id || e.zc_id || "" : String(e);
+    /* Creator record IDs are long numeric strings; a plain display value
+       ("SKY-EMP-006") is not an ID. */
+    return /^\d{8,}$/.test(t) ? t : ""
+  }
+
+  function restoreLookupText(e) {
+    return null == e ? "" : "string" == typeof e || "number" == typeof e ? String(e) : e.display_value || e
+      .displayValue || e.url || e.value || ""
+  }
+
+  /* Is this Start_Trip_in_Driver / Log_a_break row the signed-in driver's? */
+  function restoreIsMyRow(row) {
+    var id = restoreLookupId(row.Driver_ID) || restoreLookupId(row.Driver_Name);
+    return id ? id === s.recordId || id === Ut : ue(restoreLookupText(row.Driver_Name), s.name) || ue(
+      restoreLookupText(row.Driver_ID), s.id)
+  }
+
+  /* Reads one trip's rows (for the signed-in driver) from a Creator report
+     that has a Trip_ID lookup. Criteria on a lookup can't be verified
+     without a live Creator session, so the variants are tried in order
+     until one returns rows: the quoted record ID (the pattern used
+     everywhere else in this file), the unquoted numeric ID, then the
+     display value (business Trip ID, like _e() does for Primary_Driver).
+     Rows are filtered client-side (driver, End_Time) rather than with
+     `End_Time == null`, so an unsupported time comparison can't hide them.
+     A permission error is rethrown at once — retrying can't fix it. */
+  function restoreFetchTripRows(report, tripRecordId, tripLabel) {
+    var attempts = ['(Trip_ID == "' + escapeCriteria(tripRecordId) + '")', "(Trip_ID == " +
+      escapeCriteria(tripRecordId) + ")"
+    ];
+    tripLabel && attempts.push('(Trip_ID == "' + escapeCriteria(tripLabel) + '")');
+    return function next(i, lastErr) {
+      if (i >= attempts.length) {
+        if (lastErr) throw lastErr;
+        return Promise.resolve([])
+      }
+      console.log(gr, "restore: reading", report, "with criteria", attempts[i]);
+      return kr({
+        report_name: report,
+        criteria: attempts[i],
+        field_config: "all",
+        max_records: 200
+      }).then(function(res) {
+        var rows = (res && res.data || []).filter(restoreIsMyRow);
+        return rows.length ? rows : next(i + 1, lastErr)
+      }, function(err) {
+        /* Two-argument then: only kr()'s own rejection lands here, not an
+           error from a deeper attempt. */
+        var msg = "";
+        try {
+          msg = JSON.stringify(err)
+        } catch (x) {
+          msg = String(err)
+        }
+        console.warn(gr, "restore:", report, "criteria failed:", attempts[i], err);
+        if (/2898|"status"\s*:\s*403|permission denied/i.test(msg)) throw err;
+        return next(i + 1, err)
+      })
+    }(0, null)
+  }
+
+  /* Minutes of COMPLETED breaks. Computed from each row's Start_time and
+     End_time, never Total_break_duration (its unit differs between the
+     widget and the server workflows). */
+  function completedBreakMinutes(rows) {
+    return (rows || []).reduce(function(sum, row) {
+      if (!row.Start_time || !row.End_time) return sum;
+      var d = timeStrToMins(row.End_time) - timeStrToMins(row.Start_time);
+      return sum + Math.round(d < 0 ? d + 1440 : d)
+    }, 0)
+  }
+
+  /* Deferred until the boot loader has gone — R() toasts shown under it
+     would expire unseen (the loader runs for a fixed 40 s). */
+  function restoreToast(msg) {
+    I ? R(msg) : o.pendingToast = o.pendingToast ? o.pendingToast + " " + msg : msg
+  }
+
+  /* No local snapshot (new device / storage cleared): rebuild the BFM
+     counters from timestamps. Returns the labels of tiers already in
+     breach so the caller can show ONE summary instead of per-tier alerts. */
+  function rebuildBfmWithoutSnapshot(breakRows) {
+    var elapsed = Math.max(0, Math.floor((Date.now() - o.startTs) / 6e4)),
+      worked = Math.max(0, elapsed - completedBreakMinutes(breakRows)),
+      fresh = [];
+    o.onBreak = !1, o.breakElapsedMins = 0, o.restTargetMins = 0, o.restCompleteNotified = !1, o
+      .tierWorked = a.tiers.map(function() {
+        return worked
+      }), o.tierExtraMins = a.tiers.map(function() {
+        return 0
+      }), o.tierNotified = a.tiers.map(function(tier) {
+        return worked >= tier.maxWorkMins
+      }), o.breakCount = breakRows ? breakRows.length : 0, o.weekWorkedMins += worked;
+    a.tiers.forEach(function(tier) {
+      worked >= tier.maxWorkMins && fresh.push(tier.label)
+    });
+    console.warn(gr, "restore: no local snapshot; rebuilt", worked, "worked minutes (", elapsed,
+      "elapsed minus completed breaks) from", breakRows ? breakRows.length : "no", "break records");
+    return fresh
+  }
+
+  /* Applies everything the restore knows onto `o`. Synchronous on purpose:
+     nothing can run between "tripStarted" becoming true and the BFM
+     counters being in place, so a bfmTick can't count on half-built state
+     or overwrite the stored snapshot with it. Returns the labels of tiers
+     that are in breach and were not already known to be. */
+  function applyRestoredTrip(e, ts, startRow, snap, breakRows) {
+    var startD = new Date(ts),
+      endMins;
+    o.startTs = ts, o.startTime = p(startD.getHours()) + ":" + p(startD.getMinutes()), endMins = (_(o
+      .startTime) + a.maxWorkPerShift) % 1440, o.endTime = p(Math.floor(endMins / 60)) + ":" + p(
+      endMins % 60), o.startTripRecordId = startRow && (startRow.ID || startRow.id) || null, o
+      .startOdometer = startRow && Number(startRow.Starting_Odometer_Reading) || Number(le(e,
+        "startingOdometer")) || 0, o.startLocation = startRow ? restoreLookupText(startRow
+        .Live_Location) : "", o.startLocationUrl = startRow ? restoreLookupText(startRow
+        .Live_Location_URL) : "", o.endLocation = le(e, "toLocation") || "", o.bfmDayKey =
+      bfmDateKey(new Date), o.restAlertShown = !1, o.restEscalated = !1;
+    var fresh = snap ? restoreBfmSnapshot(snap) : rebuildBfmWithoutSnapshot(breakRows);
+    snap || restoreToast("Trip resumed. Break history may be incomplete."), o.restoredTrip = !0, o
+      .tripStarted = !0;
+    return fresh
+  }
+
+  /* Puts the restored trip on screen, the same way submitStartTripPage
+     does after a successful start (minus every Creator write). */
+  function showRestoredTrip(fresh) {
+    w("tripStart", o.startTime), w("tripEnd", o.endTime), w("tripStartedAt", o.startTime), w(
+      "tripWindow", o.startTime + " – " + o.endTime), w("tripStartLoc", o.startLocation), w(
+      "kpiStatus", "IN TRANSIT");
+    var stickyEl = u("#stickyStart");
+    stickyEl && (stickyEl.textContent = "Open trip", stickyEl.setAttribute("data-nav", "trip")), U || (U = !0,
+      function() {
+        try {
+          history.pushState({
+            skywayTripGuard: !0
+          }, "")
+        } catch (e) {}
+      }()), ee(), Z(), nr(), openBfmDayRecord(), W(), q(), P(), ir();
+    /* Every tier already in breach was flagged as notified before P() ran,
+       so nothing above fired a per-tier alert or wrote a Creator row; this
+       is the single quiet summary. */
+    fresh && fresh.length && !o.onBreak && pushBfmNotification("amber", "Trip resumed — " + fresh.join(
+      ", ") + (1 === fresh.length ? " limit is" : " limits are") +
+      " already reached. Take the required rest before driving on."), saveTripSnapshot(), Y("trip"),
+      console.log(gr, "restore: trip view ready", K.tripId, "| start record", o.startTripRecordId ||
+        "not found", "| on break:", o.onBreak)
+  }
+
+  /* Resolves true when the trip was resumed, false when it turned out to be
+     already ended (so the caller must not treat it as active). */
+  function restoreActiveTrip(e) {
+    var tripRecordId = e.ID || e.id,
+      tripLabel = le(e, "tripId");
+    console.log(gr, "restore: active trip found", tripLabel, tripRecordId);
+    return restoreFetchTripRows("Start_Trip_in_Driver1", tripRecordId, tripLabel).then(function(rows) {
+      var open = rows.filter(function(row) {
+        return !row.End_Time
+      }).sort(function(x, y) {
+        return me(String(y.Date_field || "") + " " + String(y.Start_Time || "")) - me(String(x
+          .Date_field || "") + " " + String(x.Start_Time || ""))
+      });
+      console.log(gr, "restore: Start_Trip_in_Driver rows for this trip/driver:", rows.length,
+        "| still open:", open.length);
+      return rows.length && !open.length ? {
+        ended: !0
+      } : {
+        row: open[0] || null
+      }
+    }, function(err) {
+      console.warn(gr,
+        "restore: could not read Start_Trip_in_Driver1 (the Driver profile needs View access to it) — resuming without the start record:",
+        err);
+      return {
+        row: null
+      }
+    }).then(function(found) {
+      if (found.ended) return console.warn(gr, "restore: every Start_Trip_in_Driver row for", tripLabel,
+        "already has an End_Time — the trip was ended, so it is not resumed"), !1;
+      var startRow = found.row,
+        ts = me(le(e, "startDateTime")),
+        src = "Trip_Dispatch Start_Date_Time";
+      !ts && startRow && (ts = me(String(startRow.Date_field || "") + " " + String(startRow
+        .Start_Time || "")), src = "Start_Trip_in_Driver Date_field + Start_Time");
+      ts || (console.warn(gr, "restore: no valid start timestamp found; falling back to now"),
+        restoreToast("Saved start time could not be read — timing restarted from now."), ts = Date.now(), src =
+        "current time (fallback)");
+      console.log(gr, "restore: trip started", new Date(ts).toString(), "— source:", src);
+      K.tripRecordId === tripRecordId || $(e);
+      var snap = readTripSnapshot();
+      console.log(gr, "restore: local BFM snapshot", snap ? "found" : "not found");
+      return (snap ? Promise.resolve(null) : restoreFetchTripRows("Log_a_break2", tripRecordId,
+        tripLabel).catch(function(err) {
+        console.warn(gr, "restore: could not read Log_a_break2 — assuming no completed breaks:", err);
+        return null
+      })).then(function(breakRows) {
+        showRestoredTrip(applyRestoredTrip(e, ts, startRow, snap, breakRows));
+        return !0
+      })
+    }).catch(function(err) {
+      /* Never strand a driver who has a live trip on the Dashboard: fall
+         back to the minimum needed to show the trip and its timer. */
+      console.error(gr, "restore failed for active trip:", err);
+      try {
+        K.tripRecordId === tripRecordId || $(e);
+        showRestoredTrip(o.tripStarted ? [] : applyRestoredTrip(e, me(le(e, "startDateTime")) || Date
+          .now(), null, null, null))
+      } catch (err2) {
+        console.error(gr, "restore fallback failed too:", err2)
+      }
+      restoreToast("Trip is active. Some restored details could not be loaded.");
+      return !0
     })
   }
 
@@ -2660,6 +3060,11 @@
   async function submitStartTripPage() {
     var errEl = u("#startTripErr");
     errEl.hidden = !0;
+    /* One trip at a time: a driver with a trip in transit must never get a
+       second Start_Trip_in_Driver record. */
+    if (hasActiveTrip()) return console.warn(gr, "Start Trip blocked — a trip is already in progress:", o
+      .activeTripRecordId || K.tripRecordId), errEl.textContent = "Complete your active trip first.", void(
+      errEl.hidden = !1);
     var startTimeVal = At("#inStStartTime");
     if (!startTimeVal) return errEl.textContent = "Enter the start time.", void(errEl.hidden = !
     1);
@@ -2677,6 +3082,7 @@
       locVal = At("#inStartLoc"),
       urlVal = At("#inStartUrl");
     var submitBtn = u("#btnSubmitStartTrip");
+    var stStartRecordId = null;
     submitBtn && (submitBtn.disabled = !0);
     try {
       if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.DATA) {
@@ -2722,6 +3128,8 @@
             stRes.result[0].code);
           if (void 0 !== stCode && 3e3 !== stCode) throw new Error(
             "Creator rejected the record (code " + stCode + "): " + _r(stRes));
+          stStartRecordId = stRes && stRes.data && (stRes.data.ID || stRes.data.id) || stRes && stRes
+            .result && stRes.result[0] && (stRes.result[0].ID || stRes.result[0].id) || null;
         });
         if (ZOHO.CREATOR.DATA.updateRecords) try {
           await ZOHO.CREATOR.DATA.updateRecords({
@@ -2747,7 +3155,9 @@
     } finally {
       submitBtn && (submitBtn.disabled = !1);
     }
-    o.startTime = startTimeVal, o.endTime = endTimeVal, o.tripStarted = !0, o.startLocation =
+    o.startTime = startTimeVal, o.startTs = me((stZohoDate || p(new Date().getDate()) + "-" + h[new Date()
+      .getMonth()] + "-" + new Date().getFullYear()) + " " + b(startTimeVal)), o.startTripRecordId =
+      stStartRecordId, o.activeTripRecordId = K.tripRecordId, o.endTime = endTimeVal, o.tripStarted = !0, o.startLocation =
       locVal, o.startLocationUrl = urlVal, o.endLocation = endLocationVal, o.startOdometer =
       odometerNum, o.tierWorked = [0, 0, 0, 0, 0], o.tierExtraMins = [0, 0, 0, 0, 0], o.tierNotified = [
         !1, !1, !1, !1, !1
@@ -2757,7 +3167,7 @@
         endTimeVal), w("tripStartLoc", locVal), w("kpiStatus", "IN TRANSIT");
     var stickyEl = u("#stickyStart");
     stickyEl && (stickyEl.textContent = "Open trip", stickyEl.setAttribute("data-nav", "trip")),
-      ee(), B(startTimeVal), W(), pushBfmNotification("green",
+      ee(), B(o.startTs), W(), saveTripSnapshot(), pushBfmNotification("green",
         "Trip " + (tripLabel || "") +
         " started — BFM monitoring is now active for this trip."), U || (U = !0, function() {
         try {
@@ -2767,6 +3177,54 @@
         } catch (e) {}
       }()), M(), R("Trip " + tripLabel + " started at " + startTimeVal +
         " — saved to Zoho Creator"), Y("trip"), persistBfmOnResume();
+  }
+
+  /* ------------------------------------------------------------
+     Ends the trip in Creator: writes End_Time on the driver's open
+     Start_Trip_in_Driver record. The server workflow "Update the end time"
+     (on edit of that form) then marks the Run Sheet, the Trip (Trip_Status
+     and Journey_Status = Completed) and the bookings Delivered. Without
+     this write Trip_Status stays "In Transit" and the restore-on-boot
+     logic would keep resurrecting a finished trip.
+     Throws on ANY failure — the caller keeps the driver in the trip.
+     ------------------------------------------------------------ */
+  async function endStartTripRecord() {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return;
+    if (!o.startTripRecordId) {
+      console.warn(gr, "complete: no Start_Trip_in_Driver record ID in memory — looking it up");
+      var rows = await restoreFetchTripRows("Start_Trip_in_Driver1", K.tripRecordId, K.tripId),
+        open = rows.filter(function(row) {
+          return !row.End_Time
+        }).sort(function(x, y) {
+          return me(String(y.Date_field || "") + " " + String(y.Start_Time || "")) - me(String(x
+            .Date_field || "") + " " + String(x.Start_Time || ""))
+        })[0];
+      if (!open) throw new Error("No open Start_Trip_in_Driver record was found for this trip.");
+      o.startTripRecordId = open.ID || open.id
+    }
+    var now = new Date,
+      endTime = p(now.getHours()) + ":" + p(now.getMinutes()) + ":" + p(now.getSeconds()),
+      payload = {
+        data: {
+          End_Time: endTime
+        }
+      },
+      DATA = ZOHO.CREATOR.DATA;
+    console.log(gr, "complete: setting End_Time", endTime, "on Start_Trip_in_Driver", o.startTripRecordId);
+    /* SDK 2.0 updates a single record with updateRecordById; updateRecords is
+       criteria-based, so it is only the fallback. */
+    var res = await (DATA.updateRecordById ? DATA.updateRecordById({
+      report_name: "Start_Trip_in_Driver1",
+      id: o.startTripRecordId,
+      payload: payload
+    }) : DATA.updateRecords({
+      report_name: "Start_Trip_in_Driver1",
+      criteria: '(ID == "' + escapeCriteria(o.startTripRecordId) + '")',
+      payload: payload
+    }));
+    console.log(gr, "Start_Trip_in_Driver End_Time update response:", res);
+    var code = res && (res.code || res.result && res.result[0] && res.result[0].code);
+    if (3e3 !== code) throw new Error("Creator did not confirm the update (code " + code + "): " + _r(res))
   }
 
   function _t() {
@@ -7005,7 +7463,11 @@
             "Raw record returned by Zoho (all keys as-received):", e)
       }(t)
     }).then(function() {
-      yr(), ke(), vr(), L()
+      yr(), vr(), ke().then(function() {
+        L()
+      }).catch(function(e) {
+        console.error(gr, "restore/load chain failed:", e), L()
+      })
     }).catch(function(t) {
       var r, n, i;
       console.error(gr, "Driver profile load failed:", t), s.loaded = !1, s.name =
@@ -7080,7 +7542,7 @@
                         n = ve(r);
                       w("tdTripId", t), w("tdTripIdRow", t), w("tdTripType", le(e,
                           "tripType") || "—"), w("tdTripStatus", r), w("tdTripStatusRow",
-                          r), w("tdRoute", le(e, "route") || "—"), w("tdBookingDate", le(
+                          r), w("tdRoute", tripRoute(e)), w("tdBookingDate", le(
                           e, "bookingDate") || "—"), w("tdPlannedDelivery", le(e,
                           "plannedDelivery") || "—"), w("tdVehicle", le(e, "vehicle") ||
                           "—"), w("tdVehicleCapacity", le(e, "vehicleCapacity") || "—"),
@@ -7108,6 +7570,10 @@
                 var t = e.target.closest("[data-nav]");
                 if (t) {
                   var r = t.getAttribute("data-nav");
+                  /* A Start Trip button while a trip is already in progress:
+                     refuse before $() swaps the active trip out from under it. */
+                  if ((t.hasAttribute("data-start-trip") || "btnStartTop" === t.id) && hasActiveTrip())
+                    return void R("Complete your active trip first");
                   if (t.hasAttribute("data-start-trip")) {
                     var n = t.getAttribute("data-trip-id"),
                       i = n ? ye[n] : null;
@@ -7385,12 +7851,30 @@
               "click",
               function() {
                 Y("tripfeedback")
-              }), e("#btnSubmitTripFeedback", "click", function() {
+              }), e("#btnSubmitTripFeedback", "click", async function() {
               var e = u("#tfbErr");
               e.hidden = !0, xt(["fTfbFeedback"]);
               var t = At("#inTfbFeedback");
               if (!t) return u("#fTfbFeedback").classList.add("is-bad"), e.textContent =
                 "Enter some feedback before submitting.", void(e.hidden = !1);
+              /* End the trip in Creator FIRST. Only when that is confirmed do the
+                 feedback / BFM summary below run, so a failed attempt can be
+                 retried without duplicating anything, and the driver stays in
+                 the trip until Creator has really closed it. */
+              var doneBtn = u("#btnSubmitTripFeedback");
+              doneBtn && (doneBtn.disabled = !0);
+              try {
+                await endStartTripRecord()
+              } catch (endErr) {
+                console.error(gr, "Could not end the trip in Creator:", endErr);
+                e.textContent = "Couldn't complete the trip in Zoho Creator: " + _r(endErr) +
+                  " You are still on this trip — check your connection and press Submit again.";
+                e.hidden = !1, doneBtn && (doneBtn.disabled = !1);
+                return
+              }
+              doneBtn && (doneBtn.disabled = !1);
+              clearTripSnapshot(), o.completedTripRecordId = K.tripRecordId, o.activeTripRecordId = null, o
+                .startTripRecordId = null, o.restoredTrip = !1;
               Mt("Trip_Feedback", {
                   Trip_ID: At("#inTfbTripId"),
                   Trip_Name: At("#inTfbTripName"),
@@ -7398,7 +7882,10 @@
                 }), saveBfmSummary(), R("Trip " + (K.tripId || X) +
                 " completed — feedback submitted"), o.tripStarted = !1, o.breakCount = 0, u(
                   "#inTfbFeedback").value = "", H(), V &&
-                (clearInterval(V), V = null), w("tripTimerVal", "00:00:00"), U = !1, Y("dash")
+                (clearInterval(V), V = null), w("tripTimerVal", "00:00:00"), U = !1, Y("dash"),
+                /* Reload the driver's trips so the Dashboard shows the updated attendance
+                   and no longer offers the finished trip as "Resume trip". */
+                ke()
             }), P(), ir(), rr(), nr(), r = window.matchMedia && window.matchMedia(
               "(prefers-reduced-motion: reduce)").matches, n = window.matchMedia && window
             .matchMedia("(hover: hover) and (pointer: fine)").matches, m(".kpi").forEach(
