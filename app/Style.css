@@ -6,95 +6,95 @@
    for readability. No selectors, values, or rules were changed.
    ========================================================================== */
 
-@keyframes loaderBounce {
-
-  0%,
-  to {
-    transform: translateY(0)
+/* ---------- NEW cinematic 20s page loader (replaces the old
+   dome/pin/truck-image loader entirely; same #pageLoader mount point and
+   the same #loaderProgress/#loaderProgressFill/#loaderProgressPct ids, so
+   Script.js's existing D()/E()/L() progress + hide-on-ready logic keeps
+   working unchanged — only the skin is new). ---------- */
+@keyframes loaderMoveLeft {
+  from {
+    transform: translateX(0)
   }
 
-  50% {
-    transform: translateY(-4px)
+  to {
+    transform: translateX(-50%)
+  }
+}
+
+@keyframes loaderChassisBounce {
+  0% {
+    transform: translateY(0) rotate(-.5deg)
+  }
+
+  to {
+    transform: translateY(-3px) rotate(.5deg)
   }
 }
 
 @keyframes loaderWheelSpin {
+  from {
+    transform: rotate(0)
+  }
+
   to {
     transform: rotate(360deg)
   }
 }
 
-@keyframes loaderRoadMove {
-  0% {
-    transform: translateX(0)
-  }
-
-  to {
-    transform: translateX(-248px)
-  }
-}
-
-@keyframes loaderPinPulse {
+@keyframes loaderBeamFlicker {
 
   0%,
   to {
-    transform: scale(1);
+    opacity: .9
+  }
+
+  50% {
+    opacity: .5
+  }
+}
+
+@keyframes loaderSmokePuff {
+  0% {
+    transform: translate(0, 0) scale(.5);
+    opacity: .55
+  }
+
+  to {
+    transform: translate(-46px, -26px) scale(2.4);
+    opacity: 0
+  }
+}
+
+@keyframes loaderNodePop {
+  0% {
+    transform: translate(-50%, -50%) scale(1)
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.6)
+  }
+
+  to {
+    transform: translate(-50%, -50%) scale(1.3)
+  }
+}
+
+@keyframes loaderConfetti {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) rotate(0);
     opacity: 1
   }
 
-  50% {
-    transform: scale(1.25);
-    opacity: .6
-  }
-}
-
-@keyframes loaderPinGlow {
-
-  0%,
-  to {
-    box-shadow: 0 0 0 0 rgba(77, 163, 255, .55)
-  }
-
   70% {
-    box-shadow: 0 0 0 10px rgba(77, 163, 255, 0)
-  }
-}
-
-@keyframes loaderTrackFlow {
-  0% {
-    stroke-dashoffset: 0
+    opacity: 1
   }
 
   to {
-    stroke-dashoffset: -460
+    transform: translate(-50%, -50%) translate(var(--cx, 60px), var(--cy, -140px)) rotate(480deg);
+    opacity: 0
   }
 }
 
-@keyframes loaderDomeGlow {
-
-  0%,
-  to {
-    opacity: .55;
-    transform: scale(1)
-  }
-
-  50% {
-    opacity: .85;
-    transform: scale(1.03)
-  }
-}
-
-@keyframes loaderTruckFloat {
-
-  0%,
-  to {
-    transform: translateY(0)
-  }
-
-  50% {
-    transform: translateY(-5px)
-  }
-}
 
 @keyframes fade {
   0% {
@@ -296,20 +296,15 @@ ul {
   list-style: none
 }
 
-.page-loader,
-.page-loader__scene {
-  display: flex;
-  justify-content: center
-}
-
 .page-loader {
   position: fixed;
   inset: 0;
   z-index: 999;
-  flex-direction: column;
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 22px;
-  background: radial-gradient(circle at 50% 38%, #163467, var(--navy) 62%, #071229 100%);
+  padding: 16px;
+  background: #020617;
   opacity: 1;
   transition: opacity .42s ease, visibility .42s ease
 }
@@ -320,136 +315,352 @@ ul {
   pointer-events: none
 }
 
+.page-loader__card {
+  position: relative;
+  width: min(92vw, 700px);
+  background: rgba(15, 23, 42, .6);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, .05);
+  border-radius: 24px;
+  padding: clamp(18px, 4vw, 40px);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .1)
+}
+
 .page-loader__scene {
   position: relative;
-  width: min(92vw, 440px);
-  height: 220px;
-  align-items: center;
-  justify-content: center
+  width: 100%;
+  height: clamp(120px, 26vw, 200px);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 56px;
+  box-shadow: inset 0 10px 30px rgba(0, 0, 0, .8);
+  border: 1px solid rgba(255, 255, 255, .05);
+  background: linear-gradient(to bottom, #020617, #0f172a)
 }
 
-.page-loader__dome {
-  position: absolute;
-  top: 6px;
-  width: 230px;
-  height: 230px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 40%, rgba(90, 160, 255, .22), rgba(90, 160, 255, 0) 70%);
-  border: 1px solid rgba(120, 175, 255, .18);
-  animation: loaderDomeGlow 3.2s ease-in-out infinite
-}
-
-.page-loader__track {
+.page-loader__envlayer {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible
+  opacity: 0;
+  transition: opacity 1s ease
 }
 
-.page-loader__track-flow {
-  animation: loaderTrackFlow 2.6s linear infinite;
-  filter: drop-shadow(0 0 5px rgba(77, 163, 255, .9))
+.page-loader__envlayer--night {
+  background: linear-gradient(to bottom, #020617, #0f172a);
+  opacity: 1
 }
 
-.page-loader__pin {
+.page-loader__envlayer--dawn {
+  background: linear-gradient(to bottom, #1e1b4b, #4c1d95)
+}
+
+.page-loader__envlayer--day {
+  background: linear-gradient(to bottom, #075985, #38bdf8)
+}
+
+.page-loader.is-stage-1 .page-loader__envlayer--night {
+  opacity: 0
+}
+
+.page-loader.is-stage-1 .page-loader__envlayer--dawn {
+  opacity: 1
+}
+
+.page-loader.is-stage-2 .page-loader__envlayer--dawn,
+.page-loader.is-stage-3 .page-loader__envlayer--dawn {
+  opacity: 0
+}
+
+.page-loader.is-stage-2 .page-loader__envlayer--day,
+.page-loader.is-stage-3 .page-loader__envlayer--day {
+  opacity: 1
+}
+
+.page-loader__parallax {
   position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: #4da3ff;
-  animation: loaderPinPulse 1.8s ease-in-out infinite
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+  background-repeat: repeat-x;
+  background-position: bottom left;
+  will-change: transform
 }
 
-.page-loader__pin svg {
-  width: 22px;
-  height: 22px;
-  filter: drop-shadow(0 0 6px rgba(77, 163, 255, .8))
+.page-loader__stars {
+  background-image: radial-gradient(2px 2px at 20px 30px, #fff, rgba(0, 0, 0, 0)), radial-gradient(2px 2px at 130px 80px, rgba(255, 255, 255, .8), rgba(0, 0, 0, 0)), radial-gradient(1px 1px at 50px 160px, #fff, rgba(0, 0, 0, 0));
+  background-size: 200px 200px;
+  animation: loaderMoveLeft 60s linear infinite;
+  opacity: 1;
+  transition: opacity .5s ease
 }
 
-.page-loader__pin i {
-  width: 6px;
-  height: 6px;
-  margin-top: 2px;
-  border-radius: 50%;
-  background: #4da3ff;
-  animation: loaderPinGlow 1.8s ease-in-out infinite
+.page-loader.is-stage-1 .page-loader__stars,
+.page-loader.is-stage-2 .page-loader__stars,
+.page-loader.is-stage-3 .page-loader__stars {
+  opacity: 0
 }
 
-.page-loader__pin--left {
-  left: 10%;
-  top: 34%;
-  animation-delay: 0s
+.page-loader__mountains {
+  background-image: url("data:image/svg+xml,%3Csvg width='400' height='120' viewBox='0 0 400 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 120 L60 40 L120 90 L220 20 L290 80 L360 30 L400 70 V120 Z' fill='rgba(15, 23, 42, 0.9)'/%3E%3C/svg%3E");
+  animation: loaderMoveLeft 30s linear infinite
 }
 
-.page-loader__pin--left i {
-  animation-delay: 0s
+.page-loader__city {
+  background-image: url("data:image/svg+xml,%3Csvg width='350' height='100' viewBox='0 0 350 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 100V40h20v-10h15v10h15v40h20V35h25v45h15V25h20v55h20V45h15v30h20V40h15v40h15V20h25v60h15V55h20v45H0z' fill='rgba(2, 6, 23, 0.95)'/%3E%3C/svg%3E");
+  animation: loaderMoveLeft 15s linear infinite
 }
 
-.page-loader__pin--right {
-  right: 10%;
-  top: 14%;
-  animation-delay: .9s
+.page-loader__streetlights {
+  background-image: url("data:image/svg+xml,%3Csvg width='250' height='160' viewBox='0 0 250 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M230 160 V70 Q230 60 210 60 L190 60 V65 L210 65 Q225 65 225 75 V160' fill='%231e293b'/%3E%3Ccircle cx='185' cy='62.5' r='5' fill='rgba(253, 224, 71, 0.8)' filter='drop-shadow(0 0 10px rgba(253, 224, 71, 1))'/%3E%3C/svg%3E");
+  animation: loaderMoveLeft 3s linear infinite
 }
 
-.page-loader__pin--right i {
-  animation-delay: .9s
+.page-loader__tracker {
+  position: relative;
+  width: 100%;
+  padding: 0 clamp(6px, 3vw, 30px);
+  margin-bottom: 18px
 }
 
 .page-loader__truck {
-  position: relative;
-  display: block;
-  width: 210px;
+  position: absolute;
+  bottom: 4px;
+  left: 0%;
+  transform: translateX(-50%);
+  width: clamp(88px, 18vw, 130px);
   height: auto;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .45)) drop-shadow(0 0 16px rgba(120, 175, 255, .35));
-  animation: loaderBounce .6s ease-in-out infinite, loaderTruckFloat 3.2s ease-in-out infinite
+  aspect-ratio: 2 / 1;
+  z-index: 20;
+  transition: left .12s linear
 }
 
-.page-loader__txt {
-  color: rgba(255, 255, 255, .82);
-  font-size: 19px;
-  font-weight: 500;
-  letter-spacing: .01em
+.page-loader__chassis {
+  position: absolute;
+  inset: 0;
+  animation: loaderChassisBounce .3s infinite alternate cubic-bezier(.4, 0, .6, 1)
 }
 
-.page-loader__txt b {
-  color: #4da3ff;
-  font-weight: 700
+.page-loader__chassis svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .5))
+}
+
+.page-loader__beam {
+  position: absolute;
+  bottom: 18%;
+  right: -46%;
+  width: 84%;
+  height: 32%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .6) 0%, rgba(255, 255, 255, 0) 100%);
+  clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 70%);
+  animation: loaderBeamFlicker 2s infinite alternate;
+  mix-blend-mode: overlay;
+  pointer-events: none
+}
+
+.page-loader__smoke {
+  position: absolute;
+  bottom: 8%;
+  left: -6%;
+  width: 8%;
+  height: 8%
+}
+
+.page-loader__smoke::before,
+.page-loader__smoke::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, .4);
+  filter: blur(2px);
+  animation: loaderSmokePuff 1.1s ease-out infinite
+}
+
+.page-loader__smoke::after {
+  animation-delay: .55s;
+  width: 9px;
+  height: 9px
+}
+
+.page-loader__wheel {
+  position: absolute;
+  bottom: -4%;
+  width: 15%;
+  aspect-ratio: 1;
+  background: #020617;
+  border-radius: 50%;
+  border: 3px solid #475569;
+  box-shadow: 0 3px 5px rgba(0, 0, 0, .8), inset 0 0 3px rgba(0, 0, 0, .5);
+  animation: loaderWheelSpin .35s linear infinite
+}
+
+.page-loader__wheel::after,
+.page-loader__wheel::before {
+  content: '';
+  position: absolute;
+  background: #cbd5e1;
+  border-radius: 2px
+}
+
+.page-loader__wheel::after {
+  top: 50%;
+  left: 10%;
+  width: 80%;
+  height: 2px;
+  transform: translateY(-50%)
+}
+
+.page-loader__wheel::before {
+  left: 50%;
+  top: 10%;
+  width: 2px;
+  height: 80%;
+  transform: translateX(-50%)
+}
+
+.page-loader__wheel--1 {
+  left: 8%
+}
+
+.page-loader__wheel--2 {
+  left: 32%
+}
+
+.page-loader__wheel--3 {
+  right: 12%
 }
 
 .page-loader__progress {
-  width: min(86vw, 420px);
-  height: 9px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, .12);
-  overflow: hidden
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: #1e293b;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, .5), 0 1px 1px rgba(255, 255, 255, .05);
+  overflow: visible
 }
 
 .page-loader__progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
   width: 0%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #38bdf8, #1e6fe8);
-  box-shadow: 0 0 10px rgba(56, 189, 248, .55);
-  transition: width .35s cubic-bezier(.2, .8, .3, 1)
+  border-radius: 4px;
+  background: #0ea5e9;
+  box-shadow: 0 0 15px #0ea5e9, 0 0 30px #0ea5e9;
+  transition: width .35s cubic-bezier(.2, .8, .3, 1), background .3s ease, box-shadow .3s ease
+}
+
+.page-loader.is-stage-1 .page-loader__progress-fill {
+  background: #a855f7;
+  box-shadow: 0 0 15px #a855f7, 0 0 30px #a855f7
+}
+
+.page-loader.is-stage-2 .page-loader__progress-fill,
+.page-loader.is-stage-3 .page-loader__progress-fill {
+  background: #10b981;
+  box-shadow: 0 0 15px #10b981, 0 0 30px #10b981
+}
+
+.page-loader__node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  background: #0f172a;
+  border: 3px solid #334155;
+  border-radius: 50%;
+  z-index: 5;
+  transition: all .3s cubic-bezier(.34, 1.56, .64, 1)
+}
+
+.page-loader__node span {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, .45);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  transition: color .3s ease
+}
+
+.page-loader__node.is-active {
+  animation: loaderNodePop .5s cubic-bezier(.175, .885, .32, 1.275) forwards;
+  background: #fff;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 16px #0ea5e9
+}
+
+.page-loader__node.is-active span {
+  color: #0ea5e9
+}
+
+.page-loader__node.is-done {
+  transform: translate(-50%, -50%) scale(1.1);
+  background: #0ea5e9;
+  border-color: #fff
+}
+
+.page-loader__node.is-done span {
+  color: #fff
+}
+
+.page-loader__status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px
+}
+
+.page-loader__statustext {
+  font-size: clamp(12px, 2.6vw, 15px);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .55)
 }
 
 .page-loader__pct {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: rgba(255, 255, 255, .6);
-  font-family: var(--mono);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: .04em
+  font-size: clamp(24px, 6vw, 34px);
+  font-weight: 900;
+  color: #0ea5e9;
+  font-variant-numeric: tabular-nums
 }
 
-.page-loader__pct span {
-  display: block;
-  width: 26px;
-  height: 1px;
-  background: rgba(255, 255, 255, .3)
+.page-loader__fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 24px
+}
+
+.page-loader__confetti {
+  position: absolute;
+  left: 88%;
+  top: 62%;
+  width: 6px;
+  height: 14px;
+  border-radius: 3px;
+  opacity: 0
+}
+
+.page-loader.is-complete .page-loader__confetti {
+  animation: loaderConfetti 1.1s cubic-bezier(.25, 1, .5, 1) forwards
 }
 
 button {
@@ -1633,6 +1844,72 @@ select {
   text-align: right
 }
 
+/* ---------- "Driver & recent trips" card — last-6-trips list ---------- */
+.trip6-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto
+}
+
+.trip6-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 12px);
+  padding: 10px 12px
+}
+
+.trip6-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13.5px
+}
+
+.trip6-hd .trip6-id {
+  font-weight: 700
+}
+
+.trip6-hd .trip6-bk {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.trip6-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px
+}
+
+.trip6-grid dt {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px
+}
+
+.trip6-grid dd {
+  font-size: 12.5px;
+  font-weight: 600
+}
+
+.trip6-empty {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px 0
+}
+
+@media (max-width:480px) {
+  .trip6-grid {
+    grid-template-columns: 1fr
+  }
+}
+
 .trip-hero {
   border-radius: var(--r-md);
   padding: 14px 16px;
@@ -1958,12 +2235,80 @@ select {
   transform: translateY(0)
 }
 
-.triptimer-actions {
+.btn--emergency {
   flex: 0 0 auto;
-  display: flex;
-  align-items: stretch;
-  gap: 10px
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #fde8e8;
+  color: #b3261e;
+  border: 1px solid rgba(179, 38, 30, .3);
+  box-shadow: var(--sh-1);
+  transition: transform .16s, box-shadow .16s, background .16s;
+  white-space: nowrap;
+  animation: emergencyPulse 2.2s ease-in-out infinite
 }
+
+.btn--emergency:hover {
+  background: #f8caca;
+  transform: translateY(-2px)
+}
+
+.btn--emergency:active {
+  transform: translateY(0)
+}
+
+@keyframes emergencyPulse {
+
+  0%,
+  to {
+    box-shadow: 0 0 0 0 rgba(179, 38, 30, .35)
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(179, 38, 30, 0)
+  }
+}
+
+.btn--emergency-solid {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  background: #b3261e;
+  color: #fff;
+  border: none;
+  box-shadow: var(--sh-1)
+}
+
+.btn--emergency-solid:hover {
+  background: #941e18
+}
+
+.emergency-note {
+  font-size: 13px;
+  color: rgba(15, 23, 42, .68);
+  margin-bottom: 16px;
+  line-height: 1.45
+}
+
+@media (max-width:700px) {
+  .btn--emergency {
+    align-self: stretch;
+    justify-content: center;
+    order: -1
+  }
+}
+
+
 
 .triptimer-actions .btn--break,
 .triptimer-actions .btn--primary {
@@ -7814,6 +8159,67 @@ textarea {
     text-align: left
   }
 }
+
+/* Tablet/large-phone: still one column (set above), but give fields a
+   little breathing room before the sub-480px stacked layout kicks in. */
+@media (max-width: 720px) and (min-width: 481px) {
+  .poddoc-sheet .field-label {
+    min-width: 130px
+  }
+}
+
+/* Narrow phones: the fixed-width label + inline value used to force
+   long values ("5 Kerry Road Acacia Ridge Brisbane Queensland (QLD)")
+   to wrap word-by-word into a tall, unreadable single column. Below
+   480px, stack each field's label above its value instead so the
+   value gets the full sheet width to wrap into normal readable lines. */
+@media (max-width: 480px) {
+  .poddoc-sheet {
+    padding: 4mm
+  }
+
+  .poddoc-sheet .field-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin-bottom: 10px
+  }
+
+  .poddoc-sheet .field-label {
+    min-width: 0;
+    font-weight: 700;
+    font-size: 11.5px
+  }
+
+  .poddoc-sheet .field-colon {
+    display: none
+  }
+
+  .poddoc-sheet .field-val {
+    border-bottom: 1px solid #bbb;
+    padding-left: 0
+  }
+
+  .poddoc-sheet .header {
+    flex-direction: column;
+    gap: 8px
+  }
+
+  .poddoc-sheet .title-block,
+  .poddoc-sheet .date-line {
+    text-align: left
+  }
+
+  .poddoc-sheet .title-block h1 {
+    font-size: 24px
+  }
+
+  .poddoc-sheet table.order-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap
+  }
+}
 /* --- POD Saved popup: receiver-signature upload control & PDF export --- */
 .poddoc-sheet [data-pdf-exclude] {
   margin-bottom: 0;
@@ -7937,4 +8343,340 @@ textarea {
 
 .kpi--pod .kpi__bar .bar>i {
   transition: width .6s cubic-bezier(.2, .8, .3, 1)
+}
+/* Stop completion summary (Hubs & stops card) — how many stops/locations
+   are available on the trip, how many are completed and how many remain.
+   Purely additive. */
+.stopsumm {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px
+}
+
+.stopsumm>div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  min-width: 0
+}
+
+.stopsumm span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted)
+}
+
+.stopsumm b {
+  font-size: 20px;
+  font-weight: 700
+}
+
+.stopsumm>div:nth-child(2) b {
+  color: var(--green)
+}
+
+/* BFM logs popup — Driver ID / Trip ID summary chips, auto-populated
+   for the currently logged-in driver and active trip. Purely additive,
+   reuses the same visual language as .stopsumm. */
+.bfmlog-ids {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px
+}
+
+.bfmlog-ids>div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  min-width: 0
+}
+
+.bfmlog-ids span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted)
+}
+
+.bfmlog-ids b {
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums
+}
+
+@media (max-width: 380px) {
+  .bfmlog-ids {
+    gap: 6px
+  }
+
+  .bfmlog-ids>div {
+    padding: 8px 9px
+  }
+
+  .bfmlog-ids span {
+    font-size: 10px;
+    letter-spacing: .03em
+  }
+
+  .bfmlog-ids b {
+    font-size: 14px
+  }
+
+  .stopsumm {
+    gap: 6px
+  }
+
+  .stopsumm>div {
+    padding: 8px 9px
+  }
+
+  .stopsumm span {
+    font-size: 10px;
+    letter-spacing: .03em
+  }
+}
+
+/* ---------- Driver score panel: BFM Logs button, rules, deductions ---------- */
+.bfmlogs-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  margin-top: 22px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  box-shadow: var(--sh-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform .15s, box-shadow .15s, border-color .15s
+}
+
+.bfmlogs-btn:hover {
+  border-color: rgba(51, 184, 31, .55);
+  box-shadow: 0 6px 18px rgba(51, 184, 31, .16)
+}
+
+.bfmlogs-btn:active {
+  transform: scale(.985)
+}
+
+.bfmlogs-btn:focus-visible {
+  outline: 3px solid rgba(51, 184, 31, .35);
+  outline-offset: 2px
+}
+
+/* Same green orb as the round info button beside the trip timer. */
+.bfmlogs-btn__orb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #8bea6a, #33b81f 70%);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(51, 184, 31, .45)
+}
+
+.bfmlogs-btn__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0
+}
+
+.bfmlogs-btn__txt b {
+  font-size: 14.5px;
+  font-weight: 700
+}
+
+.bfmlogs-btn__txt span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere
+}
+
+.bfmlogs-btn__chev {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted)
+}
+
+.scoredetails {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card-2);
+  padding: 0 14px
+}
+
+.scoredetails>summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700
+}
+
+.scoredetails>summary::-webkit-details-marker {
+  display: none
+}
+
+.scoredetails[open] {
+  padding-bottom: 14px
+}
+
+.scorerules,
+.scoreded {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px
+}
+
+.scorerules li {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: baseline
+}
+
+.scorerules li b {
+  font-family: var(--mono);
+  color: var(--red);
+  white-space: nowrap
+}
+
+.scoreded li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12.5px
+}
+
+.scoreded .scoreded__pts {
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--red)
+}
+
+.scoreded p {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere
+}
+
+.scoreded time,
+.bfmlog time {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px
+}
+
+.scoreded .scoreded__none {
+  color: var(--muted)
+}
+
+/* ---------- BFM logs panel ---------- */
+.bfmlog {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px
+}
+
+.bfmlog__day {
+  margin: 10px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted)
+}
+
+.bfmlog__item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong)
+}
+
+.bfmlog__item.red {
+  border-left-color: var(--red)
+}
+
+.bfmlog__item.amber {
+  border-left-color: var(--amber)
+}
+
+.bfmlog__item.green {
+  border-left-color: var(--green)
+}
+
+.bfmlog__item>div {
+  min-width: 0;
+  flex: 1
+}
+
+.bfmlog__item b {
+  display: block;
+  font-size: 13px
+}
+
+.bfmlog__item p {
+  font-size: 12.5px;
+  margin-top: 2px;
+  overflow-wrap: anywhere
+}
+
+.bfmlog__pts {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--red)
+}
+
+.bfmlog__empty {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted)
 }
