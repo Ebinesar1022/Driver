@@ -51,7 +51,10 @@
       mobile: ["Mobile_Number", "Mobile_Number", "Mobile_No", "Mobile", "Phone_No", "Phone"],
       altMobile: ["Al", "Al", "Alternative_Mobile", "Alternate_Mobile_No", "Alt_Mobile_No"],
       dob: ["Date_of_Birth", "Date_of_Birth", "DOB", "Birth_Date"],
-      photo: ["Profile_Photo", "Profile_Photo", "Profile_Picture", "Photo"],
+      photo: ["Profile_Photo", "Profile_Photo", "Profile_Picture", "Photo", "Driver_Photo",
+        "Employee_Photo", "Driver_Image", "Employee_Image", "Image", "Upload_Photo",
+        "Photo_Upload", "Avatar", "Picture", "Driver_Picture"
+      ],
       address: ["Address", "Address"],
       employmentType: ["Employment_Type", "Employment_Type", "Employee_Type"],
       joiningDate: ["Joining_Date", "Joining_Date", "Date_of_Joining", "DOJ"],
@@ -161,6 +164,15 @@
       scorePerOverageBlock: 1,
       overageBlockMins: 15,
       scorePerShortRest: 5,
+      /* Other Driver Score deductions (all tunable here). The score is
+         100 minus every deduction from the last scoreWindowDays days. */
+      scorePerAccident: 10,
+      scorePerPartialDelivery: 2,
+      scorePerCancelledDelivery: 3,
+      scoreWindowDays: 30,
+      /* BFM rest notification: warn this many minutes before the required
+         rest period ends ("Your rest time will be completed in 2 minutes."). */
+      restWarnMins: 2,
       source: "Default BFM values"
     },
     o = {
@@ -193,6 +205,10 @@
          "rest hours complete" alert/email more than once per break. */
       restTargetMins: 0,
       restCompleteNotified: !1,
+      /* 2-minutes-before-rest-ends warning: fired once per break;
+         breakStartTs is the real start time of the current break. */
+      restWarnNotified: !1,
+      breakStartTs: 0,
       bfmDayKey: null,
       restAlertShown: !1,
       restEscalated: !1,
@@ -217,7 +233,7 @@
     s = {
       id: "—",
       name: "Loading…",
-      score: 92,
+      score: 100,
       recordId: null,
       email: "",
       mobile: "",
@@ -454,15 +470,71 @@
     r && (r.textContent = t)
   }
 
+  var LOADER_STAGE_TEXT = ["Dispatching…", "On the move…", "Approaching destination…",
+    "Delivery successful"
+  ];
+
+  function loaderApplyStage(percent) {
+    var scene = document.getElementById("pageLoader");
+    if (!scene) return;
+    var stage = percent < 33.33 ? 0 : percent < 66.66 ? 1 : 2;
+    scene.classList.toggle("is-stage-1", stage >= 1);
+    scene.classList.toggle("is-stage-2", stage >= 2 && percent < 100);
+    scene.classList.toggle("is-stage-3", percent >= 100);
+    var stripe = document.getElementById("loaderTrailerStripe");
+    stripe && (stripe.setAttribute("fill", percent < 33.33 ? "#0ea5e9" : percent < 66.66 ?
+      "#a855f7" : "#10b981"))
+  }
+
+  function loaderApplyNodes(percent) {
+    var thresholds = [0, 33.33, 66.66, 100];
+    for (var i = 0; i < thresholds.length; i++) {
+      var node = document.getElementById("loaderNode" + i);
+      if (!node) continue;
+      if (percent >= thresholds[i] && percent <= thresholds[i] + 3) node.classList.add(
+        "is-active");
+      else node.classList.remove("is-active");
+      if (percent > thresholds[i] + 3 || 100 === percent && i < 3) node.classList.add("is-done"),
+        node.classList.remove("is-active");
+      else if (percent < thresholds[i]) node.classList.remove("is-done")
+    }
+  }
+
+  function loaderApplyStatusText(percent) {
+    var el = document.getElementById("loaderStatusText"),
+      txt = percent >= 100 ? LOADER_STAGE_TEXT[3] : percent >= 66.66 ? LOADER_STAGE_TEXT[2] :
+      percent >= 33.33 ? LOADER_STAGE_TEXT[1] : LOADER_STAGE_TEXT[0];
+    el && el.textContent !== txt && (el.textContent = txt)
+  }
+
+  function loaderLaunchConfetti() {
+    var fx = document.getElementById("loaderFx");
+    if (!fx || fx.childElementCount) return;
+    var colors = ["#0ea5e9", "#10b981", "#f59e0b", "#ffffff", "#a855f7"];
+    for (var i = 0; i < 40; i++) {
+      var span = document.createElement("span");
+      span.className = "page-loader__confetti";
+      span.style.background = colors[i % colors.length];
+      var angle = Math.random() * Math.PI + Math.PI,
+        velocity = 50 + Math.random() * 200;
+      span.style.setProperty("--cx", (Math.cos(angle) * velocity).toFixed(1) + "px");
+      span.style.setProperty("--cy", (Math.sin(angle) * velocity).toFixed(1) + "px");
+      span.style.animationDelay = (Math.random() * .2).toFixed(2) + "s";
+      fx.appendChild(span)
+    }
+  }
+
   function D(e) {
     e = Math.max(0, Math.min(100, Math.round(e)));
     var t = document.getElementById("loaderProgressFill"),
       r = document.getElementById("loaderProgressPct"),
-      n = document.getElementById("loaderProgress");
+      n = document.getElementById("loaderProgress"),
+      truck = document.getElementById("loaderTruck");
     t && (t.style.width = e + "%"), r && (r.textContent = e + "%"), n && n.setAttribute(
-      "aria-valuenow", String(e))
+      "aria-valuenow", String(e)), truck && (truck.style.left = e + "%");
+    loaderApplyStage(e), loaderApplyNodes(e), loaderApplyStatusText(e)
   }
-  var T = 40000, /* Loader minimum runtime, per request: 40 seconds. */
+  var T = 20000, /* Loader runtime, per request: 20 seconds only. */
     C = Date.now(),
     I = !1,
     S = setInterval(function() {
@@ -471,8 +543,9 @@
 
   function E() {
     if (!I) {
-      I = !0, clearInterval(S), D(100);
+      I = !0, clearInterval(S), D(100), loaderLaunchConfetti();
       var e = document.getElementById("pageLoader");
+      e && e.classList.add("is-complete");
       setTimeout(function() {
         e && !e.classList.contains("is-hidden") && (e.classList.add("is-hidden"), setTimeout(
           function() {
@@ -723,7 +796,8 @@
 
   function notifyRestComplete() {
     var msg = "Start Driving — Your Rest Time Is Finished.";
-    pushBfmNotification("green", msg), sendRestCompleteEmail(msg)
+    clearRestWarnTimer(), bfmLogAdd("Rest complete", "BFM", msg, 0, "green"),
+      pushBfmNotification("green", msg), sendRestCompleteEmail(msg)
   }
 
   function todayAt(h, m) {
@@ -746,6 +820,10 @@
      keyed by Trip_ID + Driver_ID + Date_field so history stays attached
      to the trip/driver and survives the trip spanning multiple days. */
   async function persistBfmTierEvent(tierIndex, eventType, minutes, scoreDelta, message) {
+    bfmLogAdd(eventType, a.tiers[tierIndex] ? a.tiers[tierIndex].label : "BFM", message, scoreDelta,
+      "Rest completed" === eventType || "Day rollover" === eventType ? "green" :
+      "Overage" === eventType || "Insufficient rest" === eventType || "Limit reached" ===
+      eventType ? "red" : "amber");
     if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return;
     try {
       var tier = a.tiers[tierIndex],
@@ -788,6 +866,8 @@
      tick in boot(). */
   function resolveRestOnResume() {
     var restMinsTaken = o.breakElapsedMins;
+    bfmLogAdd("Break ended", "BFM", "Break ended after " + f(restMinsTaken) + " of rest.", 0,
+      "green");
     a.tiers.forEach(function(tier, i) {
       var wasBreached = o.tierWorked[i] >= tier.maxWorkMins;
       if (restMinsTaken >= tier.restMins) {
@@ -798,7 +878,8 @@
             ").")
       } else if (wasBreached) {
         var shortfallMins = tier.restMins - restMinsTaken;
-        s.score = Math.max(0, s.score - a.scorePerShortRest), nr(), pushBfmNotification("red",
+        scoreAdd("fatigue", a.scorePerShortRest, tier.label + ": rest short by " + f(shortfallMins) +
+          " (" + tier.restLabel + " required)"), pushBfmNotification("red",
           tier.label +
           ": rest taken was short by " + f(shortfallMins) +
           " — driver score reduced by " + a.scorePerShortRest + "."), persistBfmTierEvent(i,
@@ -860,6 +941,7 @@
       });
       if (o.onBreak) {
         o.breakElapsedMins += 1;
+        maybeNotifyRestEnding();
         var restTarget = o.restTargetMins || a.tiers[0].restMins;
         !o.restCompleteNotified && o.breakElapsedMins >= restTarget && (o.restCompleteNotified =
           !0, notifyRestComplete())
@@ -869,7 +951,8 @@
           if (o.tierWorked[i] > tier.maxWorkMins) {
             o.tierExtraMins[i] += 1;
             if (0 === o.tierExtraMins[i] % a.overageBlockMins) {
-              s.score = Math.max(0, s.score - a.scorePerOverageBlock), nr();
+              scoreAdd("fatigue", a.scorePerOverageBlock, tier.label + ": " + f(o
+                .tierExtraMins[i]) + " driven past the limit");
               var msg = tier.label + ": " + f(o.tierExtraMins[i]) +
                 " driven past the limit with no qualifying rest — score reduced by " + a
                 .scorePerOverageBlock + ".";
@@ -926,7 +1009,8 @@
       localStorage.setItem(e, JSON.stringify({
         startTs: o.startTs,
         onBreak: o.onBreak,
-        breakStartTs: o.onBreak ? Date.now() - 6e4 * (o.breakElapsedMins || 0) : 0,
+        breakStartTs: o.onBreak ? o.breakStartTs || Date.now() - 6e4 * (o.breakElapsedMins || 0) : 0,
+        restWarnNotified: !!o.restWarnNotified,
         breakElapsedMins: o.breakElapsedMins || 0,
         restTargetMins: o.restTargetMins || 0,
         restCompleteNotified: !!o.restCompleteNotified,
@@ -984,8 +1068,9 @@
         return num(e.tierExtraMins && e.tierExtraMins[i])
       }), o.tierNotified = a.tiers.map(function(t, i) {
         return !!(e.tierNotified && e.tierNotified[i])
-      }), o.breakCount = num(e.breakCount), o.weekWorkedMins = num(e.weekWorkedMins), null != e
-      .score && (s.score = Number(e.score) || 0);
+      }), o.breakCount = num(e.breakCount), o.weekWorkedMins = num(e.weekWorkedMins), o
+      .restWarnNotified = !!e.restWarnNotified, o.breakStartTs = o.onBreak ? Number(e
+        .breakStartTs) || Date.now() - 6e4 * num(e.breakElapsedMins) : 0;
     /* Still on break: the break kept running while the widget was closed. */
     if (o.onBreak) o.breakElapsedMins += gap, o.restTargetMins && o.breakElapsedMins >= o
       .restTargetMins && (o.restCompleteNotified = !0);
@@ -997,6 +1082,7 @@
        BEFORE the first P() runs. tierExtraMins is deliberately left alone,
        so overage penalties only accrue for minutes counted live from now
        on, not for time that passed while the widget was closed. */
+    armRestWarnTimer();
     a.tiers.forEach(function(tier, i) {
       o.tierWorked[i] >= tier.maxWorkMins && (o.tierNotified[i] || fresh.push(tier.label), o
         .tierNotified[i] = !0)
@@ -1071,12 +1157,15 @@
 
   function G() {
     o.tripStarted && (o.onBreak = !0, o.breakElapsedMins = 0, o.restTargetMins =
-      computeRestTargetMins(), o.restCompleteNotified = !1, W(), Z(), persistBfmOnPause(),
-      saveTripSnapshot(), saveBfmSummary())
+      computeRestTargetMins(), o.restCompleteNotified = !1, o.restWarnNotified = !1, o
+      .breakStartTs = Date.now(), armRestWarnTimer(), bfmLogAdd("Break started", "BFM",
+        "Break started \u2014 required rest: " + f(o.restTargetMins) + ".", 0, "amber"), W(), Z(),
+      persistBfmOnPause(), saveTripSnapshot(), saveBfmSummary())
   }
 
   function j() {
-    o.tripStarted && (o.onBreak = !1, W(), Z(), "trip" !== o.view && Y("trip"),
+    o.tripStarted && (o.onBreak = !1, clearRestWarnTimer(), o.breakStartTs = 0, W(), Z(),
+      "trip" !== o.view && Y("trip"),
       persistBfmOnResume(), saveTripSnapshot(), P(), ir())
   }
 
@@ -1576,7 +1665,15 @@
       trackingNumber: ["Tracking_Number", "Tracking_No", "Tracking_ID"],
       tripCompletion: ["Trip_Completion_Date_Time"],
       actualDeparture: ["Actual_Departure_Date_Time"],
-      startingOdometer: ["Starting_Odometer"]
+      startingOdometer: ["Starting_Odometer"],
+      /* Added for the "Driver & recent trips" card's last-6-trips list. */
+      endDateTime: ["Trip_Completion_Date_Time", "Trip_End_Date_Time", "End_Date_Time",
+        "Actual_Delivery_Date_Time"
+      ],
+      workingHours: ["Total_Working_Hours", "Total_Work_Hours", "Working_Hours", "Trip_Duration",
+        "Total_Hours"
+      ],
+      customerCompany: ["Customer", "Customer_Company", "Customer_Company_Name", "Company_Name"]
     };
 
   function le(e, t) {
@@ -1861,7 +1958,33 @@
       }
     }
     renderTripList(u("#dashAttList"), d3, "No completed trips yet."), renderTripList(u(
-      "#attList"), l, r || "No other trips assigned to this driver.")
+      "#attList"), l, r || "No other trips assigned to this driver.");
+    renderLast6Trips(l)
+  }
+
+  /* ---------- "Driver & recent trips" card (right of Trip details) ----------
+     Shows Driver Name/ID at the top and, below it, ONLY the last 6 trip
+     records (most-recent-first — `l` above is already sorted that way) with
+     exactly: Trip ID, Booking ID, Start Date, End Date, Total Working Hours,
+     Customer Company Name. No other fields are added, per request. */
+  function renderLast6Trips(allTrips) {
+    var host = u("#last6TripsList");
+    if (!host) return;
+    var rows = (allTrips || []).slice(0, 6);
+    if (!rows.length) return void(host.innerHTML =
+      '<li class="trip6-empty">No trip records yet.</li>');
+    host.innerHTML = "", rows.forEach(function(e) {
+      var li = document.createElement("li");
+      li.className = "trip6-item";
+      li.innerHTML = '<div class="trip6-hd"><b class="trip6-id"></b><span class="trip6-bk"></span></div><dl class="trip6-grid"><div><dt>Start Date</dt><dd class="trip6-start"></dd></div><div><dt>End Date</dt><dd class="trip6-end"></dd></div><div><dt>Total Working Hours</dt><dd class="trip6-hrs"></dd></div><div><dt>Customer Company</dt><dd class="trip6-cust"></dd></div></dl>';
+      li.querySelector(".trip6-id").textContent = le(e, "tripId") || "—";
+      li.querySelector(".trip6-bk").textContent = le(e, "assignedBookings") || "—";
+      li.querySelector(".trip6-start").textContent = le(e, "startDateTime") || "—";
+      li.querySelector(".trip6-end").textContent = le(e, "endDateTime") || "—";
+      li.querySelector(".trip6-hrs").textContent = le(e, "workingHours") || "—";
+      li.querySelector(".trip6-cust").textContent = le(e, "customerCompany") || "—";
+      host.appendChild(li)
+    })
   }
 
   function _e(e, t) {
@@ -3759,7 +3882,7 @@
       raw = String(err)
     }
     if (err && err.message) raw += " " + err.message;
-    return /"?status"?\s*[:=]\s*403/.test(raw) || /289[89]/.test(raw) || /permission denied/i.test(raw)
+    return /"?status"?\s*[:=]\s*403/.test(raw) || /\b289[5-9]\b/.test(raw) || /permission denied/i.test(raw)
   }
 
   function podSaveErrorMessage(err) {
@@ -3808,9 +3931,31 @@
     })
   }
 
+  /* Friendly explanation for HTTP 403 / code 2897 on an attachment upload.
+     Attaching a file to an existing record is an UPDATE in Zoho Creator's
+     permission model, so a portal profile that may Add a POD_PDF record
+     (which is why the POD and its items save fine) can still be refused
+     here. This is a Creator permission setting, not something widget code
+     can override, so the message tells the driver/admin exactly what to
+     change. */
+  function podAttachPermissionMessage(labels) {
+    return "Zoho Creator saved the POD, but refused to attach the " + labels.join(" and ") +
+      " (HTTP 403 / code 2897 \u2014 \"Permission denied to update record(s)\"). Attaching a file counts as " +
+      "editing the record, so the portal profile this driver signs in with needs Edit permission on the " +
+      POD_PDF_REPORT_NAME + " report, and the POD_File_upload and Received_by_signature fields must be " +
+      "editable for that profile. Everything else on the POD is saved; once an admin enables that, press " +
+      "Save to retry the attachment (or use Download to keep a copy of the PDF)."
+  }
+
   /* Attaches the receiver's drawn signature and the generated PDF to the
      saved POD_PDF record. Never throws — failures come back as warnings so
-     the caller can tell the driver and let them retry just the attachments. */
+     the caller can tell the driver and let them retry just the attachments.
+
+     The uploads run ONE AT A TIME (signature, then PDF), not in parallel:
+     two simultaneous writes to the same record are unreliable on iPhone
+     Safari / in-app webviews, and if the first upload is refused for
+     permission the second would be refused for the same reason, so it is
+     skipped and reported once instead of twice. */
   function podUploadAttachments(recordId, pdfBlob, fileSafeId) {
     var meta = POD_RESULT_META,
       warnings = [],
@@ -3823,25 +3968,48 @@
       .resolve(["The file upload API isn't available, so the signature/PDF were not attached."]);
     if (needSig) {
       var sigFile = dataUrlToFile(RECEIVER_SIGNATURE_DATA, "Signature_" + fileSafeId + ".png");
-      sigFile && jobs.push(podUploadOne(recordId, "Received_by_signature", sigFile).then(function() {
-        meta.signatureUploaded = !0
-      }).catch(function(err) {
-        console.error(gr, "POD_PDF signature upload failed:", err);
-        warnings.push("The signature could not be attached (" + _r(err) + ").")
-      }))
+      sigFile && jobs.push({
+        label: "signature",
+        field: "Received_by_signature",
+        file: sigFile,
+        ok: !1,
+        onDone: function() {
+          meta.signatureUploaded = !0
+        }
+      })
     }
     if (needPdf) {
       var pdfFile = new File([pdfBlob], "Proof_of_Delivery_" + fileSafeId + ".pdf", {
         type: "application/pdf"
       });
-      jobs.push(podUploadOne(recordId, "POD_File_upload", pdfFile).then(function() {
-        meta.pdfUploaded = !0
-      }).catch(function(err) {
-        console.error(gr, "POD_PDF file upload failed:", err);
-        warnings.push("The PDF could not be attached (" + _r(err) + ").")
-      }))
+      jobs.push({
+        label: "PDF",
+        field: "POD_File_upload",
+        file: pdfFile,
+        ok: !1,
+        onDone: function() {
+          meta.pdfUploaded = !0
+        }
+      })
     }
-    return Promise.all(jobs).then(function() {
+    var denied = !1;
+    return jobs.reduce(function(chain, job) {
+      return chain.then(function() {
+        if (denied) return;
+        return podUploadOne(recordId, job.field, job.file).then(function() {
+          job.ok = !0, job.onDone()
+        }).catch(function(err) {
+          console.error(gr, "POD_PDF " + job.label + " upload failed:", err);
+          podIsPermissionError(err) ? denied = !0 : warnings.push("The " + job.label +
+            " could not be attached (" + _r(err) + ").")
+        })
+      })
+    }, Promise.resolve()).then(function() {
+      if (denied) warnings.unshift(podAttachPermissionMessage(jobs.filter(function(j) {
+        return !j.ok
+      }).map(function(j) {
+        return j.label
+      })));
       return warnings
     })
   }
@@ -3915,14 +4083,36 @@
      always generated the exact same way). Resolves to the jsPDF
      instance — callers decide whether to pdf.save() it locally,
      pdf.output("blob") it for upload, or both. */
+  /* PDF_RENDER_WIDTH_PX — fixed clone-viewport width used only while
+     html2canvas rasterises #podResultDoc, on every device. Without this,
+     html2canvas sizes its off-screen clone to the *real* window's width,
+     so on a phone (<720px) the ".poddoc-sheet" mobile media query fires
+     inside the clone too — collapsing the two-column layout and wrapping
+     every field's label/value, which is what made the exported PDF (and
+     the on-screen preview) look broken on mobile even though the exact
+     same markup produced a clean A4 layout on a laptop. Forcing the
+     clone to a desktop-width viewport (well above the 720px breakpoint)
+     makes the captured layout — and therefore the PDF — identical on
+     mobile, tablet and laptop. */
+  var PDF_RENDER_WIDTH_PX = 900;
+
   function buildPodPdf(doc) {
     return ensurePdfLibs().then(function() {
       if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF)
         throw new Error("PDF libraries unavailable after load");
+      /* iOS Safari refuses canvases above ~16.7 million pixels (the render
+         silently fails and the PDF is skipped), so the scale is lowered
+         for a long POD instead of always using 2x. */
+      var estH = Math.max(doc.scrollHeight, 1200),
+        renderScale = Math.max(1, Math.min(2, Math.sqrt(14e6 / (PDF_RENDER_WIDTH_PX * estH))));
       return window.html2canvas(doc, {
-        scale: 2,
+        scale: renderScale,
         useCORS: !0,
         backgroundColor: "#ffffff",
+        windowWidth: PDF_RENDER_WIDTH_PX,
+        windowHeight: Math.max(doc.scrollHeight, window.innerHeight || 0),
+        scrollX: 0,
+        scrollY: 0,
         ignoreElements: function(el) {
           return el.hasAttribute && el.hasAttribute("data-pdf-exclude")
         },
@@ -3932,7 +4122,17 @@
              clone html2canvas renders, so the exported PDF/PNG shows
              the actual signature instead of nothing. */
           var cloneSigImg = clonedDoc.getElementById("podResultSignatureImg");
-          cloneSigImg && (cloneSigImg.hidden = !1)
+          cloneSigImg && (cloneSigImg.hidden = !1);
+          /* Belt-and-braces on top of windowWidth above: pin the cloned
+             sheet itself to the desktop A4 width and force the desktop
+             (row) arrangement for the two-column and sign-off blocks,
+             so the capture can never fall back to the mobile stacked
+             layout even if a host page overrides the iframe width. */
+          var clonedSheet = clonedDoc.querySelector(".poddoc-sheet");
+          clonedSheet && (clonedSheet.style.width = "210mm", clonedSheet.style.minWidth = "210mm");
+          var wideBlocks = clonedDoc.querySelectorAll(
+            ".poddoc-sheet .two-col, .poddoc-sheet .signoff-cols");
+          for (var i = 0; i < wideBlocks.length; i++) wideBlocks[i].style.flexDirection = "row"
         }
       })
     }).then(function(canvas) {
@@ -3946,8 +4146,10 @@
         pageH = pdf.internal.pageSize.getHeight(),
         imgW = pageW,
         imgH = canvas.height * imgW / canvas.width,
-        imgData = canvas.toDataURL("image/png");
-      if (imgH <= pageH) pdf.addImage(imgData, "PNG", 0, 0, imgW, imgH);
+        /* JPEG (white background is already opaque) keeps the PDF a
+           fraction of the size of PNG, so it uploads reliably on mobile data. */
+        imgData = canvas.toDataURL("image/jpeg", .92);
+      if (imgH <= pageH) pdf.addImage(imgData, "JPEG", 0, 0, imgW, imgH);
       else {
         /* Content is taller than one A4 page: slice the tall canvas
            into page-height chunks and add one PDF page per chunk, so
@@ -3962,9 +4164,9 @@
           sliceCanvas.width = canvas.width, sliceCanvas.height = sliceH;
           sliceCanvas.getContext("2d").drawImage(canvas, 0, rendered, canvas.width, sliceH, 0,
             0, canvas.width, sliceH);
-          var sliceData = sliceCanvas.toDataURL("image/png"),
+          var sliceData = sliceCanvas.toDataURL("image/jpeg", .92),
             sliceImgH = sliceH / pxPerMm;
-          first || pdf.addPage(), first = !1, pdf.addImage(sliceData, "PNG", 0, 0, imgW,
+          first || pdf.addPage(), first = !1, pdf.addImage(sliceData, "JPEG", 0, 0, imgW,
             sliceImgH), rendered += sliceH
         }
       }
@@ -4047,6 +4249,7 @@
          reconcile it with Creator in the background. */
       podKpiMarkCompleted(podKpiSplitIds(podResultDomValue("podResultBookingId")));
       refreshPodCompletionKpi();
+      refreshStopsCompletedFromCreator(), scorePodOutcome(result.id);
       if (result.warnings && result.warnings.length) return done(
         "The POD and its items were saved to Zoho Creator, but: " + result.warnings.join(" ") +
         " Press Save to retry the attachment.", !0);
@@ -4624,7 +4827,8 @@
       if (3e3 !== s && void 0 !== s) return console.error(gr,
           "Creator rejected the record. code:", s, a), e.textContent = "Couldn't save: " + _r(
         a), void(e.hidden = !1);
-      console.log(gr, "saved. record id:", a && a.data && a.data.ID), Ft.unshift(r), [
+      console.log(gr, "saved. record id:", a && a.data && a.data.ID), Ft.unshift(r), scoreAccident(r.name,
+        a && a.data && a.data.ID), [
         "#inIncName", "#inIncPlace", "#inIncLoc", "#inIncUrl", "#inIncDate", "#inIncTime",
         "#inIncTrip", "#inIncRepairs", "#inIncParts", "#inIncAltVeh", "#inIncEndTime",
         "#inIncDur"
@@ -5111,6 +5315,343 @@
     })
   }
 
+  /* ============================================================
+     DRIVER SCORE + BFM LOG + REST-ENDING WARNING
+     Score = 100 minus every deduction from the last a.scoreWindowDays
+     days. Deductions come from real driver-flow events: BFM short rest /
+     overage (fatigue), accident reports (safety), partial / cancelled
+     PODs (delivery). History is kept per driver in localStorage.
+     ============================================================ */
+  var SCORE_STORE = {
+      prefix: "skyway.driverScore.",
+      key: "",
+      events: [],
+      cap: 400
+    },
+    BFM_LOG_STORE = {
+      prefix: "skyway.bfmLog.",
+      key: "",
+      events: [],
+      cap: 500
+    },
+    REST_WARN_TIMER = null;
+
+  function evStorePrune(st) {
+    var cut = Date.now() - a.scoreWindowDays * 864e5;
+    st.events = st.events.filter(function(ev) {
+      return ev && ev.ts >= cut
+    }).sort(function(x, y) {
+      return y.ts - x.ts
+    }).slice(0, st.cap)
+  }
+
+  function evStoreSave(st) {
+    if (!st.key) return;
+    try {
+      localStorage.setItem(st.key, JSON.stringify(st.events))
+    } catch (err) {
+      console.warn(gr, "score/log history could not be saved:", err)
+    }
+  }
+
+  function evStoreSync(st) {
+    var k = s.recordId ? st.prefix + s.recordId : "";
+    if (!k) return !1;
+    if (st.key === k) return !0;
+    var stored = [];
+    try {
+      stored = JSON.parse(localStorage.getItem(k) || "[]") || []
+    } catch (err) {
+      stored = []
+    }
+    var seen = {},
+      merged = [];
+    st.events.concat(stored).forEach(function(ev) {
+      ev && ev.id && !seen[ev.id] && (seen[ev.id] = !0, merged.push(ev))
+    });
+    st.key = k, st.events = merged, evStorePrune(st), evStoreSave(st);
+    return !0
+  }
+
+  function evStoreAdd(st, ev) {
+    evStoreSync(st);
+    if (ev.k && st.events.some(function(x) {
+        return x.k === ev.k
+      })) return !1;
+    ev.id = Date.now() + "-" + Math.random().toString(36).slice(2, 7), ev.ts = Date.now(), st
+      .events.unshift(ev), evStorePrune(st), evStoreSave(st);
+    return !0
+  }
+
+  function logStamp(ts) {
+    var d2 = new Date(ts);
+    return p(d2.getDate()) + " " + h[d2.getMonth()] + " " + p(d2.getHours()) + ":" + p(d2
+      .getMinutes())
+  }
+
+  function scoreCalc() {
+    var cats = {
+        fatigue: 0,
+        safety: 0,
+        delivery: 0
+      },
+      total = 0;
+    SCORE_STORE.events.forEach(function(ev) {
+      var pts = Number(ev.pts) || 0;
+      cats[ev.cat] = (cats[ev.cat] || 0) + pts, total += pts
+    });
+    return {
+      score: Math.max(0, Math.round(100 - total)),
+      cats: cats,
+      events: SCORE_STORE.events
+    }
+  }
+
+  function scoreBand(v) {
+    return v >= 90 ? {
+      label: "Excellent",
+      color: "#0F9D58"
+    } : v >= 75 ? {
+      label: "Good",
+      color: "#0F9D58"
+    } : v >= 60 ? {
+      label: "Fair",
+      color: "#C77700"
+    } : {
+      label: "Needs improvement",
+      color: "#D3352B"
+    }
+  }
+
+  function scoreSetBar(id, valId, val) {
+    var bar = u("#" + id),
+      shown = null == val ? "\u2014" : String(val);
+    w(valId, shown);
+    if (!bar) return;
+    bar.setAttribute("data-fill", null == val ? 0 : val);
+    bar.className = null == val || val >= 85 ? "green" : val >= 70 ? "amber" : "red"
+  }
+
+  function scoreRenderPanel() {
+    try {
+      var ready = evStoreSync(SCORE_STORE);
+      ready && evStorePrune(SCORE_STORE);
+      var res = scoreCalc(),
+        band = scoreBand(res.score);
+      s.score = ready ? res.score : 0;
+      w("scoreMini", ready ? res.score : "\u2014"), w("scoreBig", ready ? res.score : "\u2014"),
+        w("scoreBand", ready ? band.label : "\u2014"), w("scoreBandMini", ready ? band.label :
+          "\u2014");
+      ["#scoreRing", "#scoreArc"].forEach(function(sel) {
+        var el = u(sel);
+        el && el.setAttribute("stroke", ready ? band.color : "#E3E8F0")
+      });
+      var n = res.events.length;
+      w("scoreSub", ready ? (n ? n + (1 === n ? " deduction" : " deductions") : "No deductions") +
+        " in the last " + a.scoreWindowDays + " days" : "Loading your score\u2026");
+      var pct = function(c) {
+        return ready ? Math.max(0, 100 - res.cats[c]) : null
+      };
+      scoreSetBar("scoreBarSafety", "scoreValSafety", pct("safety")), scoreSetBar(
+        "scoreBarDelivery", "scoreValDelivery", pct("delivery")), scoreSetBar(
+        "scoreBarFatigue", "scoreValFatigue", pct("fatigue")), scoreSetBar("scoreBarFuel",
+        "scoreValFuel", null), scoreSetBar("scoreBarVehicle", "scoreValVehicle", null);
+      var rules = u("#scoreRules");
+      if (rules) {
+        rules.innerHTML = "";
+        [
+          ["Rest shorter than a BFM tier requires", a.scorePerShortRest],
+          ["Every " + a.overageBlockMins + " min driven past a BFM limit", a
+            .scorePerOverageBlock
+          ],
+          ["Accident reported", a.scorePerAccident],
+          ["Partially received delivery", a.scorePerPartialDelivery],
+          ["Cancelled delivery", a.scorePerCancelledDelivery]
+        ].forEach(function(r2) {
+          var li = document.createElement("li"),
+            sp = document.createElement("span"),
+            bb = document.createElement("b");
+          sp.textContent = r2[0], bb.textContent = "\u2212" + r2[1], li.appendChild(sp), li
+            .appendChild(bb), rules.appendChild(li)
+        });
+        var note = document.createElement("li");
+        note.textContent = "Deductions drop off after " + a.scoreWindowDays +
+          " days. Fuel efficiency and vehicle care aren't scored yet.", rules.appendChild(note)
+      }
+      var ded = u("#scoreDeductions");
+      if (ded) {
+        ded.innerHTML = "";
+        res.events.slice(0, 8).forEach(function(ev) {
+          var li = document.createElement("li"),
+            pt = document.createElement("span"),
+            box = document.createElement("div"),
+            tx = document.createElement("p"),
+            tm = document.createElement("time");
+          pt.className = "scoreded__pts", pt.textContent = "\u2212" + ev.pts, tx.textContent = ev
+            .text || "", tm.textContent = logStamp(ev.ts), box.appendChild(tx), box
+            .appendChild(tm), li.appendChild(pt), li.appendChild(box), ded.appendChild(li)
+        });
+        if (!res.events.length) {
+          var none = document.createElement("li");
+          none.className = "scoreded__none", none.textContent = "Nothing deducted.", ded
+            .appendChild(none)
+        }
+      }
+    } catch (err) {
+      console.warn(gr, "scoreRenderPanel failed:", err)
+    }
+  }
+
+  function scoreRefresh() {
+    nr();
+    var panel = u("#panelScore");
+    panel && !panel.hidden && rr()
+  }
+
+  function scoreAdd(cat, pts, text, dedupeKey) {
+    if (!(pts > 0)) return;
+    try {
+      evStoreAdd(SCORE_STORE, {
+        cat: cat,
+        pts: pts,
+        text: text,
+        trip: K && K.tripId || X || "",
+        k: dedupeKey || ""
+      })
+    } catch (err) {
+      console.warn(gr, "scoreAdd failed:", err)
+    }
+    scoreRefresh()
+  }
+
+  function scoreAccident(name, recordId) {
+    scoreAdd("safety", a.scorePerAccident, "Accident reported: " + (name || "accident"), "acc:" + (
+      recordId || Date.now()))
+  }
+
+  /* Called once a POD has been saved to Creator (both the hub flow and the
+     dispatch flow end in the same POD Saved popup). */
+  function scorePodOutcome(recordId) {
+    var st = String(podResultDomValue("podResultStatus") || "").toLowerCase();
+    if (!recordId) return;
+    if (-1 !== st.indexOf("partial")) scoreAdd("delivery", a.scorePerPartialDelivery,
+      "Partially received delivery", "pod:" + recordId);
+    else if (-1 !== st.indexOf("cancel")) scoreAdd("delivery", a.scorePerCancelledDelivery,
+      "Cancelled delivery", "pod:" + recordId)
+  }
+
+  function bfmLogAdd(type, tier, text, pts, tone) {
+    try {
+      evStoreAdd(BFM_LOG_STORE, {
+        type: type,
+        tier: tier,
+        text: text,
+        pts: Number(pts) || 0,
+        tone: tone || "amber",
+        trip: K && K.tripId || X || ""
+      });
+      var panel = u("#panelBfmLogs");
+      panel && !panel.hidden && bfmLogsRender()
+    } catch (err) {
+      console.warn(gr, "bfmLogAdd failed:", err)
+    }
+  }
+
+  function bfmLogsRender() {
+    w("bfmLogDriverId", (s && s.id) || "—"), w("bfmLogTripId", K && K.tripId || X || "—");
+    evStoreSync(BFM_LOG_STORE), evStorePrune(BFM_LOG_STORE);
+    var events = BFM_LOG_STORE.events,
+      limits = 0,
+      shortRests = 0,
+      pts = 0;
+    events.forEach(function(ev) {
+      "Limit reached" === ev.type && limits++, "Insufficient rest" === ev.type && shortRests++,
+        pts += Number(ev.pts) || 0
+    }), w("bfmLogLimits", String(limits)), w("bfmLogShort", String(shortRests)), w("bfmLogPts",
+      String(pts));
+    var host = u("#bfmLogList");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!events.length) {
+      var empty = document.createElement("li");
+      return empty.className = "bfmlog__empty", empty.textContent =
+        "No BFM events recorded yet.", void host.appendChild(empty)
+    }
+    var lastDay = "";
+    events.forEach(function(ev) {
+      var d2 = new Date(ev.ts),
+        day = p(d2.getDate()) + " " + h[d2.getMonth()] + " " + d2.getFullYear();
+      if (day !== lastDay) {
+        lastDay = day;
+        var hd = document.createElement("li");
+        hd.className = "bfmlog__day", hd.textContent = day, host.appendChild(hd)
+      }
+      var li = document.createElement("li"),
+        box = document.createElement("div"),
+        ttl = document.createElement("b"),
+        tx = document.createElement("p"),
+        tm = document.createElement("time");
+      li.className = "bfmlog__item " + (ev.tone || "amber"), ttl.textContent = ev.type + (ev
+          .tier && "BFM" !== ev.tier ? " \u00b7 " + ev.tier : ""), tx.textContent = ev.text || "",
+        tm.textContent = logStamp(ev.ts) + (ev.trip ? " \u00b7 " + ev.trip : ""), box
+        .appendChild(ttl), box.appendChild(tx), box.appendChild(tm), li.appendChild(box);
+      if (ev.pts) {
+        var pt = document.createElement("span");
+        pt.className = "bfmlog__pts", pt.textContent = "\u2212" + ev.pts, li.appendChild(pt)
+      }
+      host.appendChild(li)
+    })
+  }
+
+  function openBfmLogsPanel() {
+    bfmLogsRender(), er("panelBfmLogs", null)
+  }
+
+  /* ---------- rest ends in 2 minutes ---------- */
+  function clearRestWarnTimer() {
+    REST_WARN_TIMER && (clearTimeout(REST_WARN_TIMER), REST_WARN_TIMER = null)
+  }
+
+  function armRestWarnTimer() {
+    clearRestWarnTimer();
+    if (!o.onBreak || o.restWarnNotified || !o.breakStartTs) return;
+    var target = o.restTargetMins || a.tiers[0].restMins;
+    if (target <= a.restWarnMins) return;
+    var delay = o.breakStartTs + (target - a.restWarnMins) * 6e4 - Date.now();
+    delay > 0 && (REST_WARN_TIMER = setTimeout(maybeNotifyRestEnding, delay))
+  }
+
+  function maybeNotifyRestEnding() {
+    if (!o.tripStarted || !o.onBreak || o.restWarnNotified) return;
+    var target = o.restTargetMins || a.tiers[0].restMins;
+    if (target <= a.restWarnMins) return;
+    var remainingMs = o.breakStartTs ? o.breakStartTs + 6e4 * target - Date.now() : 6e4 * (
+      target - o.breakElapsedMins);
+    if (remainingMs <= 0 || remainingMs > 6e4 * a.restWarnMins + 1500) return;
+    o.restWarnNotified = !0, clearRestWarnTimer(), notifyRestEndingSoon(Math.max(1, Math.min(a
+      .restWarnMins, Math.ceil(remainingMs / 6e4)))), saveTripSnapshot()
+  }
+
+  function notifyRestEndingSoon(mins) {
+    var msg = "Your rest time will be completed in " + mins + (1 === mins ? " minute." :
+      " minutes.");
+    pushBfmNotification("amber", msg), O(), bfmLogAdd("Rest ending soon", "BFM", msg, 0, "amber");
+    try {
+      navigator.vibrate && navigator.vibrate([200, 100, 200])
+    } catch (err) {}
+    var toast = document.createElement("div");
+    toast.className = "rest-alert", toast.setAttribute("role", "alert"), toast.style
+      .borderLeftColor = "#C77700", toast.style.borderColor = "rgba(199,119,0,.3)", toast
+      .innerHTML =
+      '<svg width="20" height="20" style="flex:none;color:#C77700;margin-top:1px"><use href="#i-clock"/></svg><div style="flex:1"><b></b><p></p></div><button class="xbtn" aria-label="Dismiss">\u2715</button>',
+      toast.querySelector("b").textContent = "Rest ending soon", toast.querySelector("p")
+      .textContent = msg, toast.querySelector("button").addEventListener("click", function() {
+        toast.remove()
+      }), document.body.appendChild(toast), setTimeout(function() {
+        toast.parentNode && toast.remove()
+      }, 2e4)
+  }
+
   function nr() {
     var e = 2 * Math.PI * 50,
       t = 2 * Math.PI * 14,
@@ -5121,7 +5662,7 @@
     }, 250), n && (n.setAttribute("stroke-dasharray", t), setTimeout(function() {
       n.style.transition = "stroke-dashoffset 1s ease", n.style.strokeDashoffset = t * (1 - s
         .score / 100)
-    }, 350)), w("scoreMini", s.score), w("scoreBig", s.score)
+    }, 350)), w("scoreMini", s.score), w("scoreBig", s.score), scoreRenderPanel()
   }
 
   /* ---------- REPLACES ir() ----------
@@ -5146,31 +5687,96 @@
   }
 
   /* ---------- NEW: Stops completed KPI ----------
-     total     = number of hubs on the assigned Booking (Q, built by
+     total     = number of hubs/locations on the assigned Booking (Q, built by
                  rebuildHubPipelineFromBooking()).
-     completed = hubs marked "done" in the pipeline OR hubs that already
-                 have a Delivered / Partially Received POD saved (l). */
-  function updateStopsCompletedKpi() {
-    var total = Q.length;
-    if (!total) return;
+     completed = hubs marked "done" in the pipeline, hubs that already have a
+                 Delivered / Partially Received POD saved this session (l),
+                 OR hubs with such a POD already saved in Zoho Creator for
+                 this trip (STOP_REMOTE_DONE — so the count survives a reload).
+     remaining = total - completed.
+     Shown in the Trip details KPI card and in the summary strip on the
+     "Hubs & stops" card. */
+  var STOP_REMOTE_DONE = {};
+
+  function stopCounts() {
     var deliveredHubs = {};
     l.forEach(function(rep) {
       ("Delivered" === rep.status || "Partially Received" === rep.status) && (deliveredHubs[rep
         .hub] = !0)
     });
-    var completed = Q.filter(function(hub) {
-      return "done" === hub.status || deliveredHubs[hub.name]
-    }).length;
-    var valEl = document.querySelector('[data-action="deliveries"] .kpi__val');
-    valEl && (valEl.innerHTML = completed + ' <small>/ ' + total + "</small>");
-    var subEl = document.querySelector('[data-action="deliveries"] .kpi__sub');
+    var total = Q.length,
+      completed = Q.filter(function(hub) {
+        return "done" === hub.status || deliveredHubs[hub.name] || STOP_REMOTE_DONE[normKey(hub
+          .name)]
+      }).length;
+    return {
+      total: total,
+      completed: completed,
+      remaining: Math.max(0, total - completed)
+    }
+  }
+
+  function updateStopsCompletedKpi() {
+    var c = stopCounts(),
+      total = c.total,
+      completed = c.completed,
+      valEl = u("#stopsKpiVal") || document.querySelector('[data-action="deliveries"] .kpi__val'),
+      subEl = u("#stopsKpiSub") || document.querySelector('[data-action="deliveries"] .kpi__sub'),
+      barEl = u("#stopsKpiBar");
+    w("stopsAvail", total ? String(total) : "\u2014"), w("stopsDone", total ? String(completed) :
+      "\u2014"), w("stopsLeft", total ? String(c.remaining) : "\u2014");
+    if (!total) {
+      valEl && (valEl.innerHTML = "\u2014 <small>/ \u2014</small>");
+      subEl && (subEl.textContent = K.tripRecordId ? "No stops found for this trip yet" :
+        "Start a trip to see its stops");
+      return void(barEl && (barEl.style.width = "0%"))
+    }
+    valEl && (valEl.innerHTML = completed + " <small>/ " + total + "</small>");
+    barEl && (barEl.style.width = Math.round(100 * completed / total) + "%");
     if (subEl) {
       var nextHub = Q.filter(function(hub) {
-        return "next" === hub.status
-      })[0];
-      subEl.textContent = nextHub ? "Next: " + nextHub.name : (completed === total ?
-        "All stops complete" : "—")
+          return "next" === hub.status
+        })[0],
+        line1 = total + (1 === total ? " stop" : " stops") + " available \u00b7 " + completed +
+        " completed \u00b7 " + c.remaining + " remaining";
+      subEl.textContent = "";
+      subEl.appendChild(document.createTextNode(line1));
+      var line2 = nextHub ? "Next: " + nextHub.name : completed === total ? "All stops complete" :
+        "";
+      if (line2) {
+        subEl.appendChild(document.createElement("br"));
+        subEl.appendChild(document.createTextNode(line2))
+      }
     }
+  }
+
+  /* Reads this trip's saved PODs from Creator (POD_PDF1) so hubs delivered
+     before a reload / on another device still count as completed. Failure is
+     non-fatal: the in-session count keeps working. */
+  function refreshStopsCompletedFromCreator() {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA || !(K.tripRecordId || K.tripId))
+      return Promise.resolve();
+    var parts = [];
+    K.tripId && parts.push('Trip_ID == "' + escapeCriteria(K.tripId) + '"');
+    K.tripRecordId && K.tripRecordId !== K.tripId && parts.push('Trip_ID == "' + escapeCriteria(K
+      .tripRecordId) + '"');
+    return kr({
+      report_name: POD_PDF_REPORT_NAME,
+      criteria: "(" + parts.join(" || ") + ")",
+      field_config: "all",
+      max_records: 1000
+    }).then(function(res) {
+      var set = {};
+      (res && res.data || []).forEach(function(row) {
+        var st = String(cr(row.Delivery_Status) || "").trim().toLowerCase();
+        if ("delivered" !== st && "partially received" !== st) return;
+        var loc = normKey(cr(row.Delivery_Location));
+        loc && (set[loc] = !0)
+      });
+      STOP_REMOTE_DONE = set, updateStopsCompletedKpi()
+    }).catch(function(err) {
+      console.warn(gr, "Stops completed: could not read " + POD_PDF_REPORT_NAME + ":", err)
+    })
   }
 
   function ar(e) {
@@ -5241,10 +5847,27 @@
   function mr(e, t, r, n) {
     var i = document.getElementById(e),
       a = document.getElementById(t);
-    a && (a.textContent = n || "--"), r && i && (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.UTIL &&
-      ZOHO.CREATOR.UTIL.setImageData ? ZOHO.CREATOR.UTIL.setImageData(i, r, function() {
-        i.hidden = !1, a && (a.hidden = !0)
-      }) : (i.src = r, i.hidden = !1, a && (a.hidden = !0)))
+    if (a && (a.textContent = n || "--"), !r || !i) return;
+    /* PHOTO FIX: some Zoho Creator image-field shapes come back as an object
+       (e.g. {url:...} / {display_value:...} / {filepath:...}) rather than a
+       plain string — passing that object straight to ZOHO.CREATOR.UTIL
+       .setImageData()/img.src (both of which expect a string) silently
+       failed and left the avatar stuck on initials. Unwrap it here first. */
+    "object" == typeof r && (r = r.url || r.display_value || r.filepath || r.downloadUrl || "");
+    if (!r) return;
+
+    function done() {
+      i.hidden = !1, a && (a.hidden = !0)
+    }
+
+    function fail() {
+      i.hidden = !0, a && (a.hidden = !1)
+    }
+    i.onerror = fail;
+    if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && ZOHO.CREATOR.UTIL.setImageData) {
+      var call = ZOHO.CREATOR.UTIL.setImageData(i, r, done);
+      call && call.catch && call.catch(fail)
+    } else i.src = r, done()
   }
 
   function pr() {
@@ -5331,7 +5954,8 @@
         return t.length ? t.length > 1 ? t[0] + " " + t[1][0] + "." : t[0] : "—"
       }(s.name)), w("panelDriverName", s.name), w("panelDriverSub", s.id + (s.department ? " · " + s
         .department : "")), w("tripDriverLabel", s.name + " (" + s.id + ")"), w("tripsDriverName", s
-        .name), mr("hdrAvatarImg", "hdrAvatarInitials", s.photoPath, r), mr("panelAvatarImg",
+        .name), w("drvSummaryName", s.name || "—"), w("drvSummaryId", s.id || "—"), mr(
+        "hdrAvatarImg", "hdrAvatarInitials", s.photoPath, r), mr("panelAvatarImg",
         "panelAvatarInitials", s.photoPath, r), hr(), w("panelEmployeeId", s.id || "—"), w(
         "panelName", s.name || "—"), w("panelGender", s.gender || "—"), w("panelDob", s.dob || "—"),
       w("panelMobile", s.mobile || "—"), w("panelEmail", s.email || "—"), w("panelAddress", s
@@ -6319,7 +6943,8 @@
           status: "upcoming",
           delivery: []
         }
-      }), J = 0, HUB_PIPELINE_LOADED_FOR = currentTripKey, ie(), updateStopsCompletedKpi()
+      }), J = 0, HUB_PIPELINE_LOADED_FOR = currentTripKey, ie(), updateStopsCompletedKpi(),
+        refreshStopsCompletedFromCreator()
     }).catch(function(err) {
       console.warn(gr, "rebuildHubPipelineFromBooking failed:", err)
     })
@@ -7437,7 +8062,21 @@
         }
         s.recordId = e.ID || e.id || null, s.id = r("id") || s.id, s.name = r("name", lr) || s
           .name, s.gender = r("gender", cr), s.email = r("email") || s.email, s.mobile = r(
-            "mobile"), s.altMobile = r("altMobile"), s.dob = r("dob"), s.photoPath = r("photo"),
+            "mobile"), s.altMobile = r("altMobile"), s.dob = r("dob"), s.photoPath = r("photo") ||
+          /* PHOTO FIX: none of the known Profile_Photo/Photo/Driver_Photo-style
+             candidates above matched a field on this Driver record — instead of
+             giving up (which is what silently left the avatar as initials-only),
+             scan every field on the record for one that looks like an image field
+             by name (contains "photo"/"picture"/"image"/"avatar") and has a value,
+             so a differently-named field in this Zoho form still gets picked up. */
+          function() {
+            var keys = Object.keys(e),
+              rx = /photo|picture|image|avatar/i;
+            for (var i2 = 0; i2 < keys.length; i2++)
+              if (rx.test(keys[i2]) && null != e[keys[i2]] && "" !== e[keys[i2]]) return e[keys[
+                i2]];
+            return ""
+          }(),
           s.address = r("address", dr), s.employmentType = r("employmentType"), s.started = r(
             "joiningDate"), s.department = r("department", cr), s.designation = r("designation",
             cr), s.licenceNo = r("licenceNo"), s
@@ -7462,7 +8101,7 @@
             "Raw record returned by Zoho (all keys as-received):", e)
       }(t)
     }).then(function() {
-      yr(), vr(), ke().then(function() {
+      yr(), vr(), scoreRefresh(), ke().then(function() {
         L()
       }).catch(function(e) {
         console.error(gr, "restore/load chain failed:", e), L()
@@ -7666,6 +8305,8 @@
               er("panelAttendance", this), De()
             }), u("#btnScore").addEventListener("click", function() {
               er("panelScore", this), rr(), nr()
+            }), e("#btnBfmLogs", "click", openBfmLogsPanel), e("#btnBfmLogsBack", "click", function() {
+              er("panelScore", u("#btnScore")), rr(), nr()
             }), u("#scrim").addEventListener("click", tr), m("[data-close]").forEach(function(
             e) {
               e.addEventListener("click", tr)
