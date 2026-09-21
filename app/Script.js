@@ -5520,8 +5520,7 @@
      Booking_Shipments report in this app; the rest are fallbacks for
      renamed/duplicated reports. */
   var BOOKING_REPORT_CANDIDATES = ["Shipment_Booking", "Booking_Shipments",
-    "All_Booking_Shipments", "Booking_Shipments_Report", "Booking_Shipments1",
-    "All_Shipment_Booking", "Bookings", "All_Bookings"
+    "Booking_Shipments1", "All_Shipment_Booking", "Bookings", "All_Bookings"
   ];
   var BOOKING_FIELD_CANDIDATES = {
     bookingId: ["Booking_ID", "Booking", "Booking_Id", "BookingID", "Booking_No", "Booking_Number"],
