@@ -36,7 +36,9 @@
       employees: "Drivers",
       employeesFallbacks: ["Driver"],
       locations: "Locations2",
-      locationsFallbacks: ["Locations", "All_Locations"],
+      /* "Locations" / "All_Locations" are not reports in this app (only
+         Locations2 is), so trying them only added failed requests. */
+      locationsFallbacks: [],
       expenseTypes: "All_Expense_Types",
       expenseTypesFallbacks: ["All_Expense_Type", "Expense_Type", "Expense_Types"]
     },
@@ -534,11 +536,15 @@
       "aria-valuenow", String(e)), truck && (truck.style.left = e + "%");
     loaderApplyStage(e), loaderApplyNodes(e), loaderApplyStatusText(e)
   }
-  var T = 20000, /* Loader runtime, per request: 20 seconds only. */
+  /* The loader is NOT a fixed-length animation: L() closes it the moment the
+     boot chain has finished. T is only a failsafe (see setTimeout(E, T)) so a
+     hung Creator request can't leave the driver on the loader forever. Until
+     boot finishes the bar eases towards 90%; E() then completes it to 100%. */
+  var T = 20000,
     C = Date.now(),
     I = !1,
     S = setInterval(function() {
-      I || D(Math.min(100, (Date.now() - C) / T * 100))
+      I || D(90 * (1 - Math.exp(-(Date.now() - C) / 2e3)))
     }, 50);
 
   function E() {
@@ -559,9 +565,19 @@
     }
   }
 
+  /* The header artwork is embedded once in widget.html (a 60 KB data URI).
+     Any other page header marked data-art-copy reuses that same copy instead
+     of carrying its own, which halved the HTML the widget has to download. */
+  function shareHeaderArt() {
+    var src = document.querySelector("img.pagehead__art:not([data-art-copy])");
+    src = src && src.getAttribute("src");
+    src && Array.prototype.forEach.call(document.querySelectorAll("img[data-art-copy]"), function(img) {
+      img.setAttribute("src", src)
+    })
+  }
+
   function L() {
-    var e = T - (Date.now() - C);
-    e > 0 ? setTimeout(E, e) : E()
+    E()
   }
 
   function R(e) {
@@ -694,6 +710,7 @@
       }
     }), e
   }
+  /* Failsafe only — normally L() has already closed the loader long before. */
   setTimeout(E, T);
 
   var N = null;
@@ -1617,7 +1634,10 @@
   }
   var se = "Trip_Dispatch1",
     ce = {
-      driverName: ["Driver_Name", "Primary_Driver"],
+      /* Trip_Dispatch has no Driver_Name field (the driver is Primary_Driver),
+         so the criteria query on it always failed first. Primary_Driver leads
+         to save that failed request on every boot. */
+      driverName: ["Primary_Driver", "Driver_Name"],
       secondaryDriverName: ["Secondary_Driver"],
       tripId: ["Trip_ID"],
       tripName: ["Trip_Name", "Route"],
@@ -2148,7 +2168,7 @@
   }
 
   /* Deferred until the boot loader has gone — R() toasts shown under it
-     would expire unseen (the loader runs for a fixed 40 s). */
+     would expire unseen (the loader stays up until boot has finished). */
   function restoreToast(msg) {
     I ? R(msg) : o.pendingToast = o.pendingToast ? o.pendingToast + " " + msg : msg
   }
@@ -4726,7 +4746,10 @@
     var e = (s.email || "").trim(),
       t = K.driverEmployeeRecordId || K.driverRecordId || null;
     if (!e) return Promise.resolve(t);
-    var n = ["Driver_Details", "All_Driver_Details", "Drivers", "Driver"];
+    /* "Drivers" is the report on the Driver_Details form ("Driver_Details"
+       itself is the form; "All_Driver_Details" does not exist), so it goes
+       first and the incident save no longer waits on two failed requests. */
+    var n = ["Drivers", "Driver"];
     return function i(a) {
       return a >= n.length ? (console.warn(gr,
         "resolveDriverDetailsRecordId: no report candidate matched by email — falling back to cached ID",
@@ -4864,7 +4887,21 @@
          to the trip's Primary Driver lookup. */
       t = s.recordId || K.driverEmployeeRecordId || null;
     if (!e) return Promise.resolve(t);
-    var n = ["Employee_Form", "All_Employee_Form", "Employees", "Employee"];
+    /* Deliberately empty — see the note below. None of the four names tried
+       here before (Employee_Form [the form], All_Employee_Form, Employees,
+       Employee) is a report in this app, and a failed lookup was never
+       cached, so EVERY save (start trip, POD, break, BFM events, fuel,
+       incident, expense) paid for four failed requests and then used the
+       fallback anyway. The result is unchanged: the cached driver record ID.
+
+       NOTE for the app owner: the real reports on Employee_Form are
+       "Employees2" and "Driver", while s.recordId comes from the "Drivers"
+       report, which is built on the Driver_Details form. Start_Trip_in_Driver
+       .Driver_ID and Log_a_break.Driver_ID look up Employee_Form. Listing
+       "Employees2" here would send the real Employee_Form ID instead of
+       s.recordId; that changes what is written, so it was left for you to
+       decide. */
+    var n = [];
     return function i(a) {
       return a >= n.length ? (console.warn(gr,
         "resolveEmployeeFormId: no report candidate matched by email — falling back to cached ID",
@@ -6000,8 +6037,24 @@
       return String(e)
     }
   }
+  /* Identical reads issued while one is still in flight share that single
+     request: at boot the trip, hub, booking and POD-KPI code all ask for the
+     same reports at once, and each used to walk the API on its own. Locations
+     is reference data, so a non-empty result is also reused for a few
+     minutes. Failures are never cached. */
+  var KR_INFLIGHT = {},
+    KR_STATIC_CACHE = {},
+    KR_STATIC_TTL = {
+      Locations2: 6e5
+    };
   async function kr(e) {
-    return console.log("Get records Params:", e), ZOHO.CREATOR.DATA.getRecords(e).catch(function(
+    var key = JSON.stringify(e),
+      ttl = KR_STATIC_TTL[e && e.report_name],
+      hit = ttl && KR_STATIC_CACHE[key];
+    if (hit && Date.now() - hit.at < ttl) return hit.res;
+    if (KR_INFLIGHT[key]) return KR_INFLIGHT[key];
+    console.log("Get records Params:", e);
+    var req = ZOHO.CREATOR.DATA.getRecords(e).catch(function(
       e) {
       if (function(e) {
           var t = "";
@@ -6015,7 +6068,18 @@
         data: []
       };
       throw e
-    })
+    }).then(function(res) {
+      ttl && res && res.data && res.data.length && (KR_STATIC_CACHE[key] = {
+        res: res,
+        at: Date.now()
+      });
+      return res
+    });
+    KR_INFLIGHT[key] = req;
+    var release = function() {
+      delete KR_INFLIGHT[key]
+    };
+    return req.then(release, release), req
   }
 
   function wr(t) {
@@ -6103,7 +6167,7 @@
        Locations.Hub_Name / Hub_ID / Latitude / Longitude / Hub_Location
 
      Report (not form) names, which is what the Data API needs:
-       Booking_Shipments  ->  report "Shipment_Booking"
+       Booking_Shipments  ->  report "Booking_Shipments1"
        Shipment_Items     ->  report "All_Shipment_Items"
        Locations          ->  report "Locations2"
        Trip_Dispatch      ->  report "Trip_Dispatch1"
@@ -6112,7 +6176,7 @@
      ---------------------------------------------------------------
      1. WRONG REPORT NAMES. The old candidate lists led with
         "Booking_Shipments" and "Shipment_Items1" — those are FORM names.
-        The reports are "Shipment_Booking" and "All_Shipment_Items", so
+        The reports are "Booking_Shipments1" and "All_Shipment_Items", so
         every early getRecords threw before anything usable came back.
      2. THE SUBFORM CANNOT BE USED. On the Shipment_Booking report the
         Shipment_Items column is defined as a concatenated formula
@@ -6140,12 +6204,13 @@
   var CURRENT_POD_ITEMS = [];
   var CURRENT_POD_LOADING = false;
 
-  /* Report names, most-likely first. "Shipment_Booking" is the real
-     Booking_Shipments report in this app; the rest are fallbacks for
-     renamed/duplicated reports. */
-  var BOOKING_REPORT_CANDIDATES = ["Shipment_Booking", "Booking_Shipments",
-    "Booking_Shipments1", "All_Shipment_Booking", "Bookings", "All_Bookings"
-  ];
+  /* Verified against the Creator export: "Booking_Shipments1" is the only
+     report on the Booking_Shipments form ("Booking_Shipments" is the FORM
+     name). The former candidates Shipment_Booking, All_Shipment_Booking,
+     Bookings and All_Bookings do not exist, and each one only added a failed
+     request before the real report was reached. Add a name back here if the
+     report is ever renamed. */
+  var BOOKING_REPORT_CANDIDATES = ["Booking_Shipments1"];
   var BOOKING_FIELD_CANDIDATES = {
     bookingId: ["Booking_ID", "Booking", "Booking_Id", "BookingID", "Booking_No", "Booking_Number"],
     /* Booking_Shipments.Assigned_Hub is a single lookup to Locations — it
@@ -6181,9 +6246,10 @@
       "Booking_Shipment"
     ]
   };
-  var SHIPMENT_ITEM_REPORT_CANDIDATES = ["All_Shipment_Items", "Shipment_Items1",
-    "Shipment_Items", "Shipment_Items_Report"
-  ];
+  /* "All_Shipment_Items" is the report on the Shipment_Items form; the other
+     names tried before (Shipment_Items1, Shipment_Items [the form],
+     Shipment_Items_Report) do not exist. */
+  var SHIPMENT_ITEM_REPORT_CANDIDATES = ["All_Shipment_Items"];
   /* Shipment_Items.Hub_Name is the real hub field. Anything else is still
      picked up by the /hub/i key scan in hubRefsFromRow(). */
   var SHIPMENT_ITEM_HUB_FIELD = ["Hub_Name", "Delivery_Hub", "Hub", "Assigned_Hub",
@@ -6575,9 +6641,12 @@
      ------------------------------------------------------------ */
   var ITEM_ID_TO_NAME = {};
   var ITEM_NAMES_LOAD_PROMISE = null;
-  var ITEM_REPORT_CANDIDATES = ["Items", "All_Items", "Item", "All_Item", "Products",
-    "All_Products", "Item_Master", "All_Item_Master"
-  ];
+  /* Deliberately empty. The Creator export has no Items/Products report or
+     form at all, and Shipment_Items.Item is a plain text field, so there is
+     no ID to resolve into a name. The eight names tried here before all
+     failed one after another, and every POD page waited on them. If an Items
+     report is ever added, list its report name here to re-enable the lookup. */
+  var ITEM_REPORT_CANDIDATES = [];
   var ITEM_NAME_FIELD_CANDIDATES = ["Item_Name", "Name", "Product_Name", "Title",
     "Item_Description", "Description"
   ];
@@ -8548,7 +8617,7 @@
                     }, 260)
                   })
                 })
-              }), Tr(), setInterval(bfmTick, 6e4);
+              }), shareHeaderArt(), Tr(), setInterval(bfmTick, 6e4);
           var r, n
         }()
     } catch (e) {
