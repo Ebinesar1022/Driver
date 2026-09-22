@@ -8007,7 +8007,7 @@ textarea {
 
 .poddoc-sheet .date-line .field-val {
   border: none;
-  /* border-bottom: 1px solid #999; */
+  border-bottom: 1px solid #999;
   min-width: 180px;
   font-size: 14px;
   margin-left: 8px;
@@ -8063,7 +8063,7 @@ textarea {
   flex: 1;
   min-width: 0;
   border: none;
-  /* border-bottom: 1px solid #bbb; */
+  border-bottom: 1px solid #bbb;
   font-size: 12px;
   padding: 1px 4px;
   background: transparent;
@@ -8196,7 +8196,7 @@ textarea {
   }
 
   .poddoc-sheet .field-val {
-    /* border-bottom: 1px solid #bbb; */
+    border-bottom: 1px solid #bbb;
     padding-left: 0
   }
 
@@ -8679,4 +8679,376 @@ textarea {
   text-align: center;
   font-size: 13px;
   color: var(--muted)
+}
+
+/* ==========================================================================
+   2026-09-21 DASHBOARD UPDATE PASS
+   Trip Summary button, Driver Rest Time stamp, Driver BFM Log header,
+   profile-picture avatar fix, POD Completed stamp, and whole-dashboard
+   polish (equal card sizes, spacing, entrance animations, hover states).
+   Purely additive / cosmetic — no markup that scripts depend on is changed.
+   ========================================================================== */
+
+/* ---- Trip Summary button (replaces Emergency) ---- */
+.btn--summary {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  background: linear-gradient(140deg, var(--navy), var(--navy-2));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: var(--sh-1);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease
+}
+
+.btn--summary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2);
+  filter: brightness(1.1)
+}
+
+.btn--summary:active {
+  transform: translateY(0)
+}
+
+@media (max-width:700px) {
+  .btn--summary {
+    align-self: stretch;
+    justify-content: center
+  }
+}
+
+/* The green info button is gone; the wrap only holds the timer now */
+.triptimer-wrap {
+  gap: 0
+}
+
+.triptimer__infobtn {
+  display: none !important
+}
+
+@media (max-width:700px) {
+  .triptimer-wrap {
+    width: 100%
+  }
+}
+
+/* ---- Driver Rest Time stamp ---- */
+.reststamp {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 76px;
+  padding: 0 6px;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none
+}
+
+.reststamp img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 190px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(24, 124, 40, .22))
+}
+
+.reststamp.is-in img {
+  animation: restStampSlam .6s cubic-bezier(.2, .9, .25, 1.15) both
+}
+
+@keyframes restStampSlam {
+  0% {
+    opacity: 0;
+    transform: scale(2.3) rotate(-12deg)
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(.93) rotate(-2deg)
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0)
+  }
+}
+
+@media (max-width:700px) {
+  .reststamp {
+    height: 68px;
+    align-self: center
+  }
+}
+
+/* ---- Driver BFM Log header (Trip ID / Booking ID / Trip Name only) ---- */
+.bfmtop {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: linear-gradient(140deg, var(--navy), var(--navy-2));
+  color: #fff
+}
+
+.bfmtop>div {
+  min-width: 0
+}
+
+.bfmtop dt {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .62);
+  margin-bottom: 4px
+}
+
+.bfmtop dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  line-height: 1.3
+}
+
+@media (max-width:560px) {
+  .bfmtop {
+    grid-template-columns: 1fr 1fr
+  }
+
+  .bfmtop>div:last-child {
+    grid-column: 1 / -1
+  }
+}
+
+/* ---- Trip Summary popup: long values never overflow the tiles ---- */
+.tripinfopop .kpi__val,
+.tripinfopop .kpi__sub {
+  overflow-wrap: anywhere
+}
+
+/* ---- Profile picture / avatar (iPhone, Android, tablet, desktop) ----
+   .idcard span {display:block} used to knock the avatar out of its grid, so
+   the photo and the initials stacked instead of overlapping/centring. */
+.avatar,
+.idcard .avatar {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  position: relative;
+  -webkit-transform: translateZ(0)
+}
+
+.avatar img,
+.idcard .avatar img {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  -webkit-user-drag: none
+}
+
+.avatar>span,
+.idcard .avatar>span {
+  grid-area: 1 / 1;
+  display: block;
+  width: auto;
+  text-align: center;
+  line-height: 1;
+  overflow: visible;
+  text-overflow: clip
+}
+
+/* ---- POD Completed stamp ---- */
+.poddoc-sheet {
+  position: relative
+}
+
+.poddoc-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(80mm, 62%);
+  height: auto;
+  transform: translate(-50%, -50%);
+  opacity: .9;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 5
+}
+
+.poddoc-stamp.is-slam {
+  animation: podStampSlam .6s cubic-bezier(.2, .9, .25, 1.15) both
+}
+
+@keyframes podStampSlam {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.4) rotate(-10deg)
+  }
+
+  60% {
+    opacity: .95;
+    transform: translate(-50%, -50%) scale(.93) rotate(0)
+  }
+
+  100% {
+    opacity: .9;
+    transform: translate(-50%, -50%) scale(1) rotate(0)
+  }
+}
+
+/* ---- Whole dashboard: equal card sizes, alignment, spacing ---- */
+.grid-2,
+.grid-3 {
+  align-items: stretch
+}
+
+.grid-2>.card,
+.grid-3>.card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0
+}
+
+.grid-2>.card>.card__bd,
+.grid-3>.card>.card__bd {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0
+}
+
+.grid-2>.card>.card__bd>.btnrow:last-child,
+.grid-3>.card>.card__bd>.btnrow:last-child {
+  margin-top: auto !important;
+  padding-top: 14px
+}
+
+.card__bd>.trip6-list,
+.card__bd>.triplist {
+  flex: 1 1 auto
+}
+
+.tile-actions>.tile-card {
+  height: 100%
+}
+
+.card__hd {
+  min-height: 52px
+}
+
+/* ---- Smooth transitions & subtle effects ---- */
+.card,
+.tile-card,
+.tqa__card,
+.btn {
+  transition: box-shadow .22s ease, transform .22s ease, background-color .2s ease, border-color .2s ease, filter .2s ease
+}
+
+.grid-2>.card:hover,
+.grid-3>.card:hover {
+  box-shadow: var(--sh-2);
+  border-color: var(--line-strong, var(--line))
+}
+
+.tile-card:hover,
+.tqa__card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2)
+}
+
+.tile-card:active,
+.tqa__card:active,
+.btn:active {
+  transform: translateY(0) scale(.99)
+}
+
+@keyframes cardRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px)
+  }
+
+  to {
+    opacity: 1;
+    transform: none
+  }
+}
+
+.grid-2>.card,
+.grid-3>.card,
+.tqa__card,
+.tile-card {
+  animation: cardRise .5s cubic-bezier(.2, .8, .2, 1) both
+}
+
+.grid-2>.card:nth-child(2),
+.tqa__card:nth-child(2),
+.tile-card:nth-child(2) {
+  animation-delay: .06s
+}
+
+.tqa__card:nth-child(3) {
+  animation-delay: .12s
+}
+
+.tqa__card:nth-child(4) {
+  animation-delay: .18s
+}
+
+.tqa__card:nth-child(5) {
+  animation-delay: .24s
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--blue, #1E6FE8);
+  outline-offset: 2px
+}
+
+@media (max-width:700px) {
+
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: minmax(0, 1fr)
+  }
+
+  .grid-2>.card,
+  .grid-3>.card {
+    height: auto
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+
+  .reststamp img,
+  .poddoc-stamp,
+  .grid-2>.card,
+  .grid-3>.card,
+  .tqa__card,
+  .tile-card {
+    animation: none !important
+  }
 }

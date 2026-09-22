@@ -1190,17 +1190,14 @@
           <h1><span id="atdHeaderTripId">—</span> · <span id="atdHeaderRoute">—</span></h1>
           <p>Trip running since <b class="num" id="tripStartedAt">—</b>.</p>
         </div>
-        <button type="button" class="btn btn--emergency" id="btnEmergency"
-          data-panel="panelTripDetailsFull" aria-haspopup="dialog"
-          aria-label="Emergency — view current trip details"><svg width="17" height="17"
-            aria-hidden="true">
-            <use href="#i-alert" />
-          </svg> <span>Emergency</span></button>
-        <div class="triptimer-wrap"><button type="button" class="triptimer__infobtn"
-            id="btnTripInfo" aria-label="View trip details"><svg width="15" height="15"
-              aria-hidden="true">
-              <use href="#i-info" />
-            </svg></button>
+        <div class="reststamp" id="restStamp" hidden role="status" aria-live="polite"
+          aria-label="Driver rest time exceeded"><img id="restStampImg" alt="Driver rest time" decoding="async"
+            draggable="false"></div>
+        <button type="button" class="btn btn--summary" id="btnTripSummary" aria-haspopup="dialog"
+          aria-label="Trip Summary"><svg width="17" height="17" aria-hidden="true">
+            <use href="#i-list" />
+          </svg> <span>Trip Summary</span></button>
+        <div class="triptimer-wrap">
           <div class="triptimer" id="tripTimerBox" aria-live="polite"><span
               class="triptimer__label">Trip timer</span> <span class="triptimer__val num"
               id="tripTimerVal">00:00:00</span></div>
@@ -1306,13 +1303,14 @@
         </div>
         <div class="card">
           <div class="card__hd">
-            <h2>Driver &amp; recent trips</h2>
+            <h2>Driver BFM Log</h2>
           </div>
           <div class="card__bd">
-            <div class="idcard" style="margin-bottom:14px">
-              <div class="idcard__text"><b id="drvSummaryName">—</b> <span
-                  class="hubstatus">ID: <span id="drvSummaryId">—</span></span></div>
-            </div>
+            <dl class="bfmtop" aria-label="Current trip">
+              <div><dt>Trip ID</dt><dd id="bfmLogTripId">—</dd></div>
+              <div><dt>Booking ID</dt><dd id="bfmLogBookingId">—</dd></div>
+              <div><dt>Trip Name</dt><dd id="bfmLogTripName">—</dd></div>
+            </dl>
             <p class="eyebrow" style="margin-bottom:8px">Last 6 trips</p>
             <ul class="trip6-list" id="last6TripsList">
               <li class="trip6-empty">Loading…</li>
@@ -1644,6 +1642,7 @@
                   id="podResultReceivedAt">—</span></div>
             </div>
           </div>
+          <img class="poddoc-stamp" id="podResultStamp" alt="POD Completed" hidden draggable="false">
         </div>
       </div>
       <p class="formerr" id="podSaveErr" hidden></p>
@@ -1972,14 +1971,14 @@
   <div class="docviewer tripinfopop" id="tripInfoPopup" hidden role="dialog" aria-modal="true"
     aria-labelledby="tripInfoTitle">
     <div class="docviewer__hd">
-      <h3 id="tripInfoTitle">Trip details</h3><button class="xbtn" id="tripInfoClose"
+      <h3 id="tripInfoTitle">Trip Summary</h3><button class="xbtn" id="tripInfoClose"
         aria-label="Close">✕</button>
     </div>
     <section class="kpis" style="margin-bottom:0"><button class="kpi" data-action="trip"
         style="--kpi-i:0">
         <p class="kpi__label">Trip status</p>
-        <p class="kpi__val" style="font-size:26px">IN TRANSIT</p>
-        <p class="kpi__sub" id="tripWindow">06:30 – 16:35</p>
+        <p class="kpi__val" id="tripSumStatus" style="font-size:26px">IN TRANSIT</p>
+        <p class="kpi__sub" id="tripWindow">—</p>
       </button> <button class="kpi kpi--violet" data-action="deliveries" style="--kpi-i:1">
         <p class="kpi__label">Stops completed</p>
         <p class="kpi__val" id="stopsKpiVal">— <small>/ —</small></p>
@@ -1987,12 +1986,12 @@
         <div class="kpi__bar" style="margin-top:10px"><div class="bar"><i class="green" id="stopsKpiBar"></i></div></div>
       </button> <button class="kpi kpi--rust" data-action="duty" style="--kpi-i:2">
         <p class="kpi__label">Driving time</p>
-        <p class="kpi__val num" id="tripDriving">06:42</p>
+        <p class="kpi__val num" id="tripDriving">00:00</p>
         <p class="kpi__sub" id="tripDrivingSub">Since duty commenced</p>
       </button> <button class="kpi kpi--teal" data-action="route" style="--kpi-i:3">
         <p class="kpi__label">Distance left</p>
-        <p class="kpi__val">388 <small>km</small></p>
-        <p class="kpi__sub">Of 874 km total</p>
+        <p class="kpi__val"><span id="tripDistLeft">—</span> <small>km</small></p>
+        <p class="kpi__sub" id="tripDistTotal">Total distance not set</p>
       </button></section>
   </div>
   <div class="scrim" id="docViewerScrim" hidden></div>
