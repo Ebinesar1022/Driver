@@ -1184,6 +1184,15 @@
       </div>
     </div>
     <div class="view" id="viewTrip" hidden>
+      <!-- Shown if the driver pauses/stops the trip timer before any BFM tier
+           actually requires a rest break. Populated/toggled by
+           showRestNotReachedBanner() in Script.js. -->
+      <div class="rest-not-reached-banner" id="restNotReachedBanner" hidden role="status" aria-live="polite">
+        <svg width="22" height="22" aria-hidden="true" style="flex:none">
+          <use href="#i-alert" />
+        </svg>
+        <span>Rest time has not been reached yet. Please do not take a break. Continue driving; the required rest time will be shown when it is reached.</span>
+      </div>
       <div class="pagehead pagehead--flex">
         <div>
           <p class="eyebrow">Assigned trip</p>
@@ -1304,14 +1313,18 @@
         <div class="card">
           <div class="card__hd">
             <h2>Driver BFM Log</h2>
+            <button class="btn btn--ghost bfm-viewall" id="btnBfmLogView" type="button" data-panel="panelBfmLogView"><svg width="14" height="14" aria-hidden="true"><use href="#i-list" /></svg> View All</button>
           </div>
-          <div class="card__bd">
+          <div class="card__bd bfm-log-card">
+            <p class="eyebrow bfm-log-label">Current / active trip</p>
             <dl class="bfmtop" aria-label="Current trip">
               <div><dt>Trip ID</dt><dd id="bfmLogTripId">—</dd></div>
-              <div><dt>Booking ID</dt><dd id="bfmLogBookingId">—</dd></div>
               <div><dt>Trip Name</dt><dd id="bfmLogTripName">—</dd></div>
+              <div><dt>Trip Status</dt><dd id="bfmLogTripStatus">—</dd></div>
+              <div><dt>Start Date</dt><dd id="bfmLogStartDate">—</dd></div>
+              <div><dt>Customer Company</dt><dd id="bfmLogCustomer">—</dd></div>
             </dl>
-            <p class="eyebrow" style="margin-bottom:8px">Last 6 trips</p>
+            <p class="eyebrow bfm-log-label">Last 2 trips</p>
             <ul class="trip6-list" id="last6TripsList">
               <li class="trip6-empty">Loading…</li>
             </ul>
@@ -2531,6 +2544,29 @@
         </div>
       </dl>
     </div>
+  </aside>
+  <!-- Driver BFM Log "View All" popup. Opened by the "View All" button in the
+       Driver BFM Log card (data-panel="panelBfmLogView"). Shows every trip
+       record for this driver (renderAllBfmLogTrips() in Script.js) — the Driver
+       BFM Log card itself only lists the last 3. Structure (panel__hd /
+       panel__bd, close button) matches every other popup in this app so it
+       opens/closes via the existing data-panel / data-close wiring. -->
+  <aside class="panel" id="panelBfmLogView" hidden aria-label="Driver BFM Log details">
+    <div class="panel__hd">
+      <h2>Driver BFM Log</h2><button class="xbtn" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="panel__bd">
+      <p class="eyebrow" style="margin-bottom:8px">All trips</p>
+      <ul class="trip6-list" id="allBfmTripsList">
+        <li class="trip6-empty">Loading…</li>
+      </ul>
+    </div>
+  </aside>
+  <aside class="panel panel--trip-detail" id="panelBfmTripDetails" hidden aria-label="Selected trip details">
+    <div class="panel__hd"><div><p class="eyebrow">Trip record</p><h2 id="bfdTitle">Trip details</h2></div><button class="xbtn" data-close aria-label="Close">×</button></div>
+    <div class="panel__bd"><dl class="deflist bfm-detail-grid">
+      <div><dt>Trip Name</dt><dd id="bfdTripName">—</dd></div><div><dt>Trip Type</dt><dd id="bfdTripType">—</dd></div><div><dt>Trip Status</dt><dd id="bfdStatus">—</dd></div><div><dt>Booking Date</dt><dd id="bfdBookingDate">—</dd></div><div><dt>Delivery Mode</dt><dd id="bfdDeliveryMode">—</dd></div><div><dt>Assignment Vehicle</dt><dd id="bfdVehicle">—</dd></div><div><dt>Vehicle Capacity</dt><dd id="bfdVehicleCapacity">—</dd></div><div><dt>Primary Driver</dt><dd id="bfdPrimaryDriver">—</dd></div><div><dt>Secondary Driver</dt><dd id="bfdSecondaryDriver">—</dd></div><div><dt>Driver ID</dt><dd id="bfdDriverId">—</dd></div><div><dt>Customer Company Name</dt><dd id="bfdCustomer">—</dd></div><div><dt>Pickup Location</dt><dd id="bfdPickup">—</dd></div><div><dt>Delivery Location</dt><dd id="bfdDelivery">—</dd></div><div><dt>Estimated Distance (KM)</dt><dd id="bfdDistance">—</dd></div><div><dt>Trip Duration</dt><dd id="bfdDuration">—</dd></div><div><dt>Quantity</dt><dd id="bfdQuantity">—</dd></div><div><dt>Weight</dt><dd id="bfdWeight">—</dd></div><div><dt>Total Loaded Weight</dt><dd id="bfdLoadedWeight">—</dd></div><div><dt>Tracking Number</dt><dd id="bfdTracking">—</dd></div><div><dt>Start Date &amp; Time</dt><dd id="bfdStartDate">—</dd></div><div><dt>Trip Completion Date &amp; Time</dt><dd id="bfdCompletion">—</dd></div><div><dt>Start Location (Live)</dt><dd id="bfdStartLocation">—</dd></div><div><dt>End Location</dt><dd id="bfdEndLocation">—</dd></div><div><dt>Start Time</dt><dd id="bfdStartTime">—</dd></div><div><dt>End Time</dt><dd id="bfdEndTime">—</dd></div>
+    </dl></div>
   </aside>
   <script src="Script.js"></script>
 </body>

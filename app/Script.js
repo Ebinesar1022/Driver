@@ -198,6 +198,18 @@
       tierWorked: [0, 0, 0, 0, 0],
       tierExtraMins: [0, 0, 0, 0, 0],
       tierNotified: [!1, !1, !1, !1, !1],
+      /* Only one BFM rule is active at a time. A qualifying rest advances
+         this cursor; after the final rule it wraps to the first rule. */
+      activeBfmRuleIndex: 0,
+      /* tierWarned[i] = whether the "rest due soon" alert (fired BEFORE a
+         tier actually breaches, once its remaining work time drops to
+         a.warnBefore minutes or less) has already fired for the tier's
+         *current* work period. Re-armed once that tier is reset by a
+         qualifying rest, same as tierNotified. This only fires while the
+         driver is actively driving (see bfmTick()) — never while onBreak,
+         so it never re-fires after the driver has already stopped the
+         timer to take the rest it was warning about. */
+      tierWarned: [!1, !1, !1, !1, !1],
       breakElapsedMins: 0,
       /* Rest-complete auto-notification (Issue #4): restTargetMins is the
          rest duration owed for the current break (set when the break
@@ -205,6 +217,10 @@
          "rest hours complete" alert/email more than once per break. */
       restTargetMins: 0,
       restCompleteNotified: !1,
+      restResolved: !1,
+      /* Rule satisfied by the current break. Persisting it prevents a
+         completed rest from being resolved again after a widget reload. */
+      completedRestRuleIndex: null,
       /* 2-minutes-before-rest-ends warning: fired once per break;
          breakStartTs is the real start time of the current break. */
       restWarnNotified: !1,
@@ -574,11 +590,13 @@
   }
 
   function x() {
-    var tiers = a.tiers.map(function(tier, i) {
+    var activeIndex = Math.max(0, Math.min(a.tiers.length - 1, Number(o.activeBfmRuleIndex) || 0)),
+      tiers = a.tiers.map(function(tier, i) {
         var used = o.tierWorked[i],
           left = tier.maxWorkMins - used,
           breached = used >= tier.maxWorkMins,
-          status = breached ? "breach" : left <= a.warnBefore ? "warn" : "ok";
+          isActive = i === activeIndex,
+          status = !isActive ? "pending" : (breached ? "breach" : left <= a.warnBefore ? "warn" : "ok");
         return {
           index: i,
           key: tier.key,
@@ -588,9 +606,9 @@
           left: left,
           restMins: tier.restMins,
           restLabel: tier.restLabel,
-          breached: breached,
+          breached: isActive && breached,
           status: status,
-          note: "Rest required: " + tier.restLabel
+          note: isActive ? "Rest required: " + tier.restLabel : "Pending next work period"
         }
       }),
       breachedTiers = tiers.filter(function(t) {
@@ -603,9 +621,7 @@
       /* The soonest tier to breach drives the countdown shown in the hero
          (or, once something is already breached, the largest outstanding
          rest requirement among breached tiers). */
-      soonest = tiers.slice().sort(function(x, y) {
-        return x.left - y.left
-      })[0],
+      soonest = tiers[activeIndex],
       restRequired = breachedTiers.length ? Math.max.apply(null, breachedTiers.map(function(t) {
         return t.restMins
       })) : 0,
@@ -618,7 +634,7 @@
       restRequired: restRequired,
       restReason: restReason,
       breachedTiers: breachedTiers,
-      shiftLeft: tiers[4].left,
+      shiftLeft: soonest.left,
       weekLeft: a.maxWorkPerWeek - o.weekWorkedMins,
       rules: tiers
     }
@@ -753,12 +769,8 @@
      sendRestCompleteEmail() below for the exact contract expected.
      ============================================================ */
   function computeRestTargetMins() {
-    var breachedRestMins = [];
-    a.tiers.forEach(function(tier, i) {
-      o.tierWorked[i] >= tier.maxWorkMins && breachedRestMins.push(tier.restMins)
-    });
-    return breachedRestMins.length ? Math.max.apply(null, breachedRestMins) : a.tiers[0]
-      .restMins
+    var index = Math.max(0, Math.min(a.tiers.length - 1, Number(o.activeBfmRuleIndex) || 0));
+    return a.tiers[index].restMins
   }
 
   function sendRestCompleteEmail(message) {
@@ -795,9 +807,9 @@
   }
 
   function notifyRestComplete() {
-    var msg = "Start Driving — Your Rest Time Is Finished.";
+    var msg = "Your rest time is finished. Please continue the trip and drive.";
     clearRestWarnTimer(), bfmLogAdd("Rest complete", "BFM", msg, 0, "green"),
-      pushBfmNotification("green", msg), sendRestCompleteEmail(msg)
+      pushBfmNotification("green", msg), resolveRestOnResume(), P(), saveTripSnapshot(), sendRestCompleteEmail(msg)
   }
 
   /* ---------- Driver Rest Time stamp ----------
@@ -817,6 +829,36 @@
       img && !img.getAttribute("src") && (img.src = REST_STAMP_SRC || "");
       box.hidden && (box.hidden = !1, box.classList.remove("is-in"), void box.offsetWidth, box.classList.add("is-in"))
     } else box.hidden || (box.hidden = !0, box.classList.remove("is-in"))
+  }
+
+  /* ---------- NEW: prominent "Rest time has been reached" banner ----------
+     Shown at the top of the Assigned Trip page whenever the driver's BFM
+     status is "breach" (a tier's max work time has been reached and a
+     qualifying rest hasn't been taken yet) — i.e. exactly the moments the
+     per-tier "rest required" alert above already fires for. Cleared again
+     the moment the driver takes a qualifying rest and the tier(s) reset. */
+  /* ---------- NEW: "rest time not reached yet" notification ----------
+     Shown at the top of the Assigned Trip page if the driver tries to
+     pause/stop the trip timer (i.e. start a break) before any BFM tier
+     has actually reached its work limit — since no rest is owed yet,
+     the driver is told to keep driving instead. Auto-dismisses itself a
+     few seconds later; also hidden immediately if the driver leaves the
+     Assigned Trip view or a break legitimately starts. */
+  var restNotReachedHideTimer = null;
+
+  function hideRestNotReachedBanner() {
+    var box = u("#restNotReachedBanner");
+    if (!box) return;
+    restNotReachedHideTimer && (clearTimeout(restNotReachedHideTimer), restNotReachedHideTimer =
+      null), box.hidden || (box.classList.remove("is-in"), box.hidden = !0)
+  }
+
+  function showRestNotReachedBanner() {
+    var box = u("#restNotReachedBanner");
+    if (!box) return;
+    restNotReachedHideTimer && clearTimeout(restNotReachedHideTimer);
+    box.hidden = !1, box.classList.remove("is-in"), void box.offsetWidth, box.classList.add(
+      "is-in"), restNotReachedHideTimer = setTimeout(hideRestNotReachedBanner, 6000)
   }
 
   function todayAt(h, m) {
@@ -884,29 +926,29 @@
      "overage" penalties every 15 min the driver keeps working per the
      tick in boot(). */
   function resolveRestOnResume() {
+    if (o.restResolved || null != o.completedRestRuleIndex || !o.onBreak && !o.breakElapsedMins && !o.restTargetMins) return;
     var restMinsTaken = o.breakElapsedMins;
     bfmLogAdd("Break ended", "BFM", "Break ended after " + f(restMinsTaken) + " of rest.", 0,
       "green");
-    a.tiers.forEach(function(tier, i) {
-      var wasBreached = o.tierWorked[i] >= tier.maxWorkMins;
-      if (restMinsTaken >= tier.restMins) {
-        var hadWork = o.tierWorked[i] > 0;
-        o.tierWorked[i] = 0, o.tierExtraMins[i] = 0, o.tierNotified[i] = !1, wasBreached &&
-          hadWork && persistBfmTierEvent(i, "Rest completed", restMinsTaken, 0, tier.label +
-            " satisfied — " + f(restMinsTaken) + " rest logged (required " + tier.restLabel +
-            ").")
-      } else if (wasBreached) {
-        var shortfallMins = tier.restMins - restMinsTaken;
-        scoreAdd("fatigue", a.scorePerShortRest, tier.label + ": rest short by " + f(shortfallMins) +
-          " (" + tier.restLabel + " required)"), pushBfmNotification("red",
-          tier.label +
-          ": rest taken was short by " + f(shortfallMins) +
-          " — driver score reduced by " + a.scorePerShortRest + "."), persistBfmTierEvent(i,
-          "Insufficient rest", restMinsTaken, a.scorePerShortRest, tier.label +
-          " required " + tier.restLabel + " but only " + f(restMinsTaken) +
-          " was taken (short by " + f(shortfallMins) + ").")
-      }
-    }), o.breakElapsedMins = 0
+    var i = Math.max(0, Math.min(a.tiers.length - 1, Number(o.activeBfmRuleIndex) || 0)),
+      tier = a.tiers[i], wasBreached = o.tierWorked[i] >= tier.maxWorkMins;
+    if (restMinsTaken >= tier.restMins) {
+      o.tierWorked[i] = 0, o.tierExtraMins[i] = 0, o.tierNotified[i] = !1, o.tierWarned[i] = !1,
+        o.restResolved = !0, o.completedRestRuleIndex = i,
+        wasBreached && persistBfmTierEvent(i, "Rest completed", restMinsTaken, 0, tier.label +
+          " satisfied — " + f(restMinsTaken) + " rest logged (required " + tier.restLabel + ")."),
+        o.activeBfmRuleIndex = (i + 1) % a.tiers.length,
+        bfmLogAdd("BFM rule advanced", tier.label, "Moving to " + a.tiers[o.activeBfmRuleIndex].label +
+          " for the next work period.", 0, "green")
+    } else if (wasBreached) {
+      var shortfallMins = tier.restMins - restMinsTaken;
+      scoreAdd("fatigue", a.scorePerShortRest, tier.label + ": rest short by " + f(shortfallMins) +
+        " (" + tier.restLabel + " required)"), pushBfmNotification("red", tier.label +
+        ": rest taken was short by " + f(shortfallMins) + " — driver score reduced by " + a.scorePerShortRest +
+        "."), persistBfmTierEvent(i, "Insufficient rest", restMinsTaken, a.scorePerShortRest, tier.label +
+        " required " + tier.restLabel + " but only " + f(restMinsTaken) + " was taken (short by " + f(shortfallMins) + ").")
+    }
+    o.breakElapsedMins = 0, o.restTargetMins = 0
   }
 
   /* ---------- NEW: multi-day BFM cycling ----------
@@ -925,13 +967,28 @@
   }
 
   async function rolloverBfmDay() {
+    /* Snapshot exactly how the previous day ended BEFORE anything is reset,
+       so the new day's BFM cycle — and the BFM Logs entry recording the
+       rollover — correctly reflect the previous day's end time and state
+       (still driving vs. already resting, and how much work/rest each tier
+       had logged) rather than silently discarding it. */
+    var prevDayKey = o.bfmDayKey,
+      prevEndedAt = new Date(),
+      prevEndedAtLabel = p(prevEndedAt.getHours()) + ":" + p(prevEndedAt.getMinutes()),
+      prevWasOnBreak = !!o.onBreak,
+      prevTierSummary = a.tiers.map(function(tier, i) {
+        return tier.label + ": " + f(o.tierWorked[i] || 0) + " worked";
+      }).join(", ");
     await persistBfmOnPause();
     var newDayKey = bfmDateKey(new Date()),
-      msg = "New day (" + newDayKey +
-      ") started for this trip — BFM work and rest limits have reset and monitoring continues.";
-    o.tierWorked = [0, 0, 0, 0, 0], o.tierExtraMins = [0, 0, 0, 0, 0], o.tierNotified = [!1, !1, !1, !1,
-      !1
-    ], o.bfmDayKey = newDayKey, pushBfmNotification("green", msg), persistBfmTierEvent(null,
+      msg = "Day " + (prevDayKey || "—") + " ended at " + prevEndedAtLabel + " (" + (prevWasOnBreak ?
+        "driver was resting" : "driver was driving") + " — " + prevTierSummary +
+      "). New day (" + newDayKey +
+      ") started for this trip — BFM monitoring continues from the active work/rest period.";
+    /* Midnight creates a new monitoring record, but never restarts the
+       rule cycle. Work/rest counters and the active rule remain tied to
+       the driver's actual timestamps until a qualifying rest advances it. */
+    o.bfmDayKey = newDayKey, pushBfmNotification("green", msg), persistBfmTierEvent(null,
       "Day rollover", 0, 0, msg), await openBfmDayRecord()
   }
 
@@ -954,18 +1011,21 @@
        once the driver resumes. */
   function bfmTick() {
     if (o.tripStarted) {
+      var tickNow = Date.now(), elapsedMins = o.bfmLastTickTs ? Math.max(1, Math.floor((tickNow - o.bfmLastTickTs) / 6e4)) : 1;
+      o.bfmLastTickTs = tickNow;
       var todayKey = bfmDateKey(new Date());
       if (o.bfmDayKey && o.bfmDayKey !== todayKey) return void rolloverBfmDay().then(function() {
         P(), ir()
       });
       if (o.onBreak) {
-        o.breakElapsedMins += 1;
-        maybeNotifyRestEnding();
-        var restTarget = o.restTargetMins || a.tiers[0].restMins;
-        !o.restCompleteNotified && o.breakElapsedMins >= restTarget && (o.restCompleteNotified =
+        o.breakElapsedMins += elapsedMins;
+        var restTarget = o.restTargetMins;
+        restTarget && !o.restCompleteNotified && o.breakElapsedMins >= restTarget && (o.restCompleteNotified =
           !0, notifyRestComplete())
       } else {
-        a.tiers.forEach(function(tier, i) {
+        var i = Math.max(0, Math.min(a.tiers.length - 1, Number(o.activeBfmRuleIndex) || 0)),
+          tier = a.tiers[i];
+        for (var elapsedStep = 0; elapsedStep < elapsedMins; elapsedStep++) {
           o.tierWorked[i] += 1;
           if (o.tierWorked[i] > tier.maxWorkMins) {
             o.tierExtraMins[i] += 1;
@@ -978,8 +1038,21 @@
               pushBfmNotification("red", msg), persistBfmTierEvent(i, "Overage", o
                 .tierExtraMins[i], a.scorePerOverageBlock, msg)
             }
+          } else if (!o.tierWarned[i] && tier.maxWorkMins - o.tierWorked[i] <= a.warnBefore) {
+            /* BFM PRE-BREACH WARNING (fired BEFORE the driver reaches the
+               required break/rest time). Only reachable from this branch,
+               which only runs while the driver is actively driving
+               (!o.onBreak) — so once the driver stops the timer to take
+               the rest, this can never fire again for the same breach
+               cycle. Re-armed by resolveRestOnResume()/rolloverBfmDay()
+               once the tier is genuinely reset. */
+            o.tierWarned[i] = !0;
+            var warnMsg = tier.label + " work limit: " + f(tier.maxWorkMins - o.tierWorked[i]) +
+              " left before a rest break (" + tier.restLabel + ") is required.";
+            /* Countdown remains visible in the BFM panel; no pre-limit notification or log entry. */
           }
-        }), o.weekWorkedMins += 1
+        }
+        o.weekWorkedMins += elapsedMins
       }
     }
     o.tripStarted && saveTripSnapshot(), P(), ir()
@@ -994,8 +1067,8 @@
       var i = new Date;
       r = 60 * i.getHours() + i.getMinutes() - n, r < 0 && (r += 1440)
     }
-    o.tierWorked = a.tiers.map(function() {
-      return r
+    o.tierWorked = a.tiers.map(function(_, i) {
+      return i === o.activeBfmRuleIndex ? r : 0
     }), o.weekWorkedMins += r, o.restAlertShown = !1, o.restEscalated = !1, F(), P(), ir()
   }
 
@@ -1033,9 +1106,13 @@
         breakElapsedMins: o.breakElapsedMins || 0,
         restTargetMins: o.restTargetMins || 0,
         restCompleteNotified: !!o.restCompleteNotified,
+        restResolved: !!o.restResolved,
+        completedRestRuleIndex: null == o.completedRestRuleIndex ? null : o.completedRestRuleIndex,
         tierWorked: o.tierWorked || [],
         tierExtraMins: o.tierExtraMins || [],
         tierNotified: o.tierNotified || [],
+        tierWarned: o.tierWarned || [],
+        activeBfmRuleIndex: o.activeBfmRuleIndex || 0,
         breakCount: o.breakCount || 0,
         weekWorkedMins: o.weekWorkedMins || 0,
         score: s.score,
@@ -1079,33 +1156,37 @@
         return Math.max(0, Number(v) || 0)
       },
       fresh = [];
-    o.onBreak = !!e.onBreak, o.breakElapsedMins = num(e.breakElapsedMins), o.restTargetMins = num(e
-        .restTargetMins), o.restCompleteNotified = !!e.restCompleteNotified, o.tierWorked = a.tiers
+    o.onBreak = !!e.onBreak, o.activeBfmRuleIndex = Math.max(0, Math.min(a.tiers.length - 1,
+      Math.floor(num(e.activeBfmRuleIndex)))), o.breakElapsedMins = num(e.breakElapsedMins), o.restTargetMins = num(e
+      .restTargetMins), o.restCompleteNotified = !!e.restCompleteNotified, o.restResolved = !!e.restResolved,
+      o.completedRestRuleIndex = null == e.completedRestRuleIndex ? null : Math.max(0, Math.min(a.tiers.length - 1,
+        Math.floor(num(e.completedRestRuleIndex)))), o.tierWorked = a.tiers
       .map(function(t, i) {
         return num(e.tierWorked && e.tierWorked[i])
       }), o.tierExtraMins = a.tiers.map(function(t, i) {
         return num(e.tierExtraMins && e.tierExtraMins[i])
       }), o.tierNotified = a.tiers.map(function(t, i) {
         return !!(e.tierNotified && e.tierNotified[i])
+      }), o.tierWarned = a.tiers.map(function(t, i) {
+        return !!(e.tierWarned && e.tierWarned[i])
       }), o.breakCount = num(e.breakCount), o.weekWorkedMins = num(e.weekWorkedMins), o
       .restWarnNotified = !!e.restWarnNotified, o.breakStartTs = o.onBreak ? Number(e
         .breakStartTs) || Date.now() - 6e4 * num(e.breakElapsedMins) : 0;
     /* Still on break: the break kept running while the widget was closed. */
     if (o.onBreak) o.breakElapsedMins += gap, o.restTargetMins && o.breakElapsedMins >= o
       .restTargetMins && (o.restCompleteNotified = !0);
-    else o.tierWorked = o.tierWorked.map(function(v) {
-      return Math.min(cap, v + gap)
-    }), o.weekWorkedMins += gap;
+    else o.tierWorked[o.activeBfmRuleIndex] = Math.min(cap, o.tierWorked[o.activeBfmRuleIndex] + gap),
+      o.weekWorkedMins += gap;
     /* Breaches that happened (or were already alerted) before this restore
        must never raise alerts or Creator rows again: mark them notified
        BEFORE the first P() runs. tierExtraMins is deliberately left alone,
        so overage penalties only accrue for minutes counted live from now
        on, not for time that passed while the widget was closed. */
-    armRestWarnTimer();
-    a.tiers.forEach(function(tier, i) {
-      o.tierWorked[i] >= tier.maxWorkMins && (o.tierNotified[i] || fresh.push(tier.label), o
-        .tierNotified[i] = !0)
-    }), console.log(gr, "restore: BFM snapshot applied; fast-forwarded", gap, "min", o.onBreak ?
+    armRestCompleteTimer();
+    var restoredTier = a.tiers[o.activeBfmRuleIndex], restoredUsed = o.tierWorked[o.activeBfmRuleIndex];
+    restoredUsed >= restoredTier.maxWorkMins ? (o.tierNotified[o.activeBfmRuleIndex] || fresh.push(restoredTier.label), o
+      .tierNotified[o.activeBfmRuleIndex] = !0, o.tierWarned[o.activeBfmRuleIndex] = !0) : restoredTier.maxWorkMins - restoredUsed <= a
+      .warnBefore && (o.tierWarned[o.activeBfmRuleIndex] = !0), console.log(gr, "restore: BFM snapshot applied; fast-forwarded", gap, "min", o.onBreak ?
       "(on break)" : "");
     return fresh
   }
@@ -1174,16 +1255,31 @@
       .maxWorkPerShift
   }
 
+  /* Pausing the trip timer to take a break/rest is NOT the end of the
+     driver's shift — saveBfmSummary() (the "Work period logged — Xh
+     worked (limit Xh). Rest required: Xh." notification) is a shift-END
+     summary and must only run once, when the trip is actually completed
+     (see the trip-feedback submit handler further down). Previously this
+     function called saveBfmSummary() on every single pause, which is why
+     that notification fired after only a few minutes of driving; it has
+     been removed here so pausing/stopping the timer for a routine BFM
+     rest break no longer fires it. */
   function G() {
-    o.tripStarted && (o.onBreak = !0, o.breakElapsedMins = 0, o.restTargetMins =
+    if (!o.tripStarted) return;
+    /* If the driver stops/pauses the timer before any BFM tier has
+       actually reached its required work limit, no rest is owed yet —
+       show the "keep driving" notification instead of starting a break. */
+    if ("breach" !== x().status) return void showRestNotReachedBanner();
+    hideRestNotReachedBanner();
+    o.onBreak = !0, o.breakElapsedMins = 0, o.restTargetMins =
       computeRestTargetMins(), o.restCompleteNotified = !1, o.restWarnNotified = !1, o
-      .breakStartTs = Date.now(), armRestWarnTimer(), bfmLogAdd("Break started", "BFM",
-        "Break started \u2014 required rest: " + f(o.restTargetMins) + ".", 0, "amber"), W(), Z(),
-      persistBfmOnPause(), saveTripSnapshot(), saveBfmSummary())
+      .completedRestRuleIndex = null, o.breakStartTs = Date.now(), o.bfmLastTickTs = Date.now(), o.restResolved = !1, armRestCompleteTimer(), bfmLogAdd("Break started", "BFM",
+        "Break started — required rest: " + f(o.restTargetMins) + ".", 0, "amber"), W(), Z(),
+      persistBfmOnPause(), saveTripSnapshot()
   }
 
   function j() {
-    o.tripStarted && (o.onBreak = !1, clearRestWarnTimer(), o.breakStartTs = 0, W(), Z(),
+    o.tripStarted && (o.onBreak = !1, clearRestWarnTimer(), o.breakStartTs = 0, o.bfmLastTickTs = Date.now(), W(), Z(),
       "trip" !== o.view && Y("trip"),
       persistBfmOnResume(), saveTripSnapshot(), P(), ir())
   }
@@ -1475,8 +1571,13 @@
   /* Trip Summary popup + Driver BFM Log header — real trip-record values only. */
   function updateTripSummaryFields(e) {
     var st = String(le(e, "status") || "").trim();
-    w("tripSumStatus", (st || "In transit").toUpperCase()), w("bfmLogTripId", le(e, "tripId") || "—"), w(
-      "bfmLogBookingId", le(e, "assignedBookings") || "—"), w("bfmLogTripName", le(e, "tripName") || "—");
+    w("tripSumStatus", (st || "In transit").toUpperCase()), w("bfmLogTripId", le(e, "tripId") || "—"), w("bfmLogTripName", le(e, "tripName") || "—"), w("bfmLogTripStatus", st || "—"), w("bfmLogStartDate", le(e, "startDateTime") || "—"), w("bfmLogCustomer", le(e, "customerCompany") || "—"),
+      renderBookingIdCell(u("#bfmLogBookingId"), bookingIdsArray(e)),
+      /* Mirror the same values into the "View" popup opened from the
+         Driver BFM Log card header, until its final field list is
+         confirmed. */
+      w("bfmLogViewTripId", le(e, "tripId") || "—"), w("bfmLogViewTripName", le(e, "tripName") || "—"),
+      renderBookingIdCell(u("#bfmLogViewBookingId"), bookingIdsArray(e));
     var km = function(v) {
         var n = parseFloat(String(null == v ? "" : v).replace(/,/g, "").replace(/[^0-9.]/g, ""));
         return isFinite(n) ? n : null
@@ -1656,6 +1757,7 @@
   var se = "Trip_Dispatch1",
     ce = {
       driverName: ["Driver_Name", "Primary_Driver"],
+      driverId: ["Driver_ID", "Driver_Id", "Driver_Code"],
       secondaryDriverName: ["Secondary_Driver"],
       tripId: ["Trip_ID"],
       tripName: ["Trip_Name", "Route"],
@@ -1719,6 +1821,36 @@
     return Array.isArray(r) ? r.map(function(e) {
       return cr(e)
     }).filter(Boolean).join(", ") : cr(r)
+  }
+
+  /* ---------- Booking ID list helpers (Driver BFM Log) ----------
+     A Trip can carry more than one Booking (Booking_ID is a multi-select
+     lookup — see ce.assignedBookings above). bookingIdsArray() returns the
+     individual Booking IDs as a plain array (instead of le()'s
+     comma-joined string) so the UI can decide how to lay them out;
+     renderBookingIdCell() then fills a "Booking ID" cell either as plain
+     text (one Booking) or as a compact, scrollable list (more than one),
+     used identically by the Driver BFM Log card, its "View All" popup,
+     and each per-trip row. */
+  function bookingIdsArray(e) {
+    var r = sr(e, ce.assignedBookings || []);
+    if (Array.isArray(r)) return r.map(function(v) {
+      return cr(v)
+    }).filter(Boolean);
+    var v = cr(r);
+    return v ? [v] : []
+  }
+
+  function renderBookingIdCell(el, ids) {
+    if (!el) return;
+    ids = ids || [];
+    if (!ids.length) return el.classList.remove("bk-multi"), void(el.textContent = "—");
+    if (1 === ids.length) return el.classList.remove("bk-multi"), void(el.textContent = ids[0]);
+    el.classList.add("bk-multi"), el.innerHTML = '<span class="bk-scroll" role="list" tabindex="0" aria-label="' +
+      ids.length + ' Booking IDs — scroll to view all">' + ids.map(function(id) {
+        var safe = String(id).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return '<span class="bk-chip" role="listitem">' + safe + "</span>"
+      }).join("") + "</span>"
   }
 
   function de(e, t) {
@@ -1969,7 +2101,7 @@
     });
     var d3 = l.filter(function(e) {
       return "Completed" === le(e, "status")
-    }).slice(0, 3);
+    }).slice(0, 2);
 
     function buildTripRow(e) {
       var t = le(e, "tripId") || "—",
@@ -1997,31 +2129,116 @@
     }
     renderTripList(u("#dashAttList"), d3, "No completed trips yet."), renderTripList(u(
       "#attList"), l, r || "No other trips assigned to this driver.");
-    renderLast6Trips(l)
+    var allBfmRows = e.slice().sort(function(a, b) {
+      return me(le(b, "startDateTime")) - me(le(a, "startDateTime"))
+    });
+    renderLast2Trips(l), renderAllBfmLogTrips(allBfmRows)
   }
 
-  /* ---------- "Driver & recent trips" card (right of Trip details) ----------
-     Shows Driver Name/ID at the top and, below it, ONLY the last 6 trip
+  /* ---------- "Driver BFM Log" card ----------
+     Shows Driver Name/ID at the top and, below it, ONLY the last 3 trip
      records (most-recent-first — `l` above is already sorted that way) with
      exactly: Trip ID, Booking ID, Start Date, End Date, Total Working Hours,
-     Customer Company Name. No other fields are added, per request. */
-  function renderLast6Trips(allTrips) {
+     Customer Company Name. No other fields are added, per request. The
+     "View All" button next to this list opens the panelBfmLogView popup,
+     which shows every trip record via renderAllBfmLogTrips() below. */
+  function buildBfmTripLi(e) {
+    var li = document.createElement("li");
+    li.className = "trip6-item";
+    li.innerHTML = '<div class="trip6-hd"><b class="trip6-id"></b><button type="button" class="trip6-eye" data-bfm-trip-detail aria-label="View complete trip details" title="View trip details">👁</button></div><dl class="trip6-grid"><div><dt>Start Date</dt><dd class="trip6-start"></dd></div><div><dt>End Date</dt><dd class="trip6-end"></dd></div><div><dt>Customer Company Name</dt><dd class="trip6-cust"></dd></div><div><dt>Total Working Hours</dt><dd class="trip6-hrs"></dd></div></dl>';
+    li.querySelector(".trip6-id").textContent = le(e, "tripId") || "—";
+    li.querySelector(".trip6-start").textContent = le(e, "startDateTime") || "—";
+    li.querySelector(".trip6-end").textContent = le(e, "endDateTime") || "—";
+    li.querySelector(".trip6-hrs").textContent = le(e, "workingHours") || "—";
+    var customerCell = li.querySelector(".trip6-cust");
+    customerCell.textContent = "Loading…";
+    resolveBfmTripCustomer(e).then(function(customer) {
+      customerCell.textContent = customer || "—"
+    }).catch(function() {
+      customerCell.textContent = le(e, "customerCompany") || "—"
+    });
+    li.querySelector("[data-bfm-trip-detail]").addEventListener("click", function() {
+      openBfmTripDetails(e)
+    });
+    return li
+  }
+
+  function renderLast2Trips(allTrips) {
     var host = u("#last6TripsList");
     if (!host) return;
-    var rows = (allTrips || []).slice(0, 6);
+    var rows = (allTrips || []).slice(0, 2);
     if (!rows.length) return void(host.innerHTML =
       '<li class="trip6-empty">No trip records yet.</li>');
     host.innerHTML = "", rows.forEach(function(e) {
-      var li = document.createElement("li");
-      li.className = "trip6-item";
-      li.innerHTML = '<div class="trip6-hd"><b class="trip6-id"></b><span class="trip6-bk"></span></div><dl class="trip6-grid"><div><dt>Start Date</dt><dd class="trip6-start"></dd></div><div><dt>End Date</dt><dd class="trip6-end"></dd></div><div><dt>Total Working Hours</dt><dd class="trip6-hrs"></dd></div><div><dt>Customer Company</dt><dd class="trip6-cust"></dd></div></dl>';
-      li.querySelector(".trip6-id").textContent = le(e, "tripId") || "—";
-      li.querySelector(".trip6-bk").textContent = le(e, "assignedBookings") || "—";
-      li.querySelector(".trip6-start").textContent = le(e, "startDateTime") || "—";
-      li.querySelector(".trip6-end").textContent = le(e, "endDateTime") || "—";
-      li.querySelector(".trip6-hrs").textContent = le(e, "workingHours") || "—";
-      li.querySelector(".trip6-cust").textContent = le(e, "customerCompany") || "—";
-      host.appendChild(li)
+      host.appendChild(buildBfmTripLi(e))
+    })
+  }
+
+  /* ---------- Driver BFM Log "View All" popup ----------
+     Renders every trip record for this driver (not just the last 3 shown
+     on the card), most-recent-first — same row markup/fields as the card
+     so the popup and the card stay visually consistent. */
+  function renderAllBfmLogTrips(allTrips) {
+    var host = u("#allBfmTripsList");
+    if (!host) return;
+    var rows = allTrips || [];
+    if (!rows.length) return void(host.innerHTML =
+      '<li class="trip6-empty">No trip records yet.</li>');
+    host.innerHTML = "", rows.forEach(function(e) {
+      host.appendChild(buildBfmTripLi(e))
+    })
+  }
+
+  function openBfmTripDetails(rec) {
+    var values = {
+      bfdTripName: le(rec, "tripName"), bfdTripType: le(rec, "tripType"), bfdStatus: le(rec, "status"),
+      bfdBookingDate: le(rec, "bookingDate"), bfdDeliveryMode: le(rec, "deliveryMode"), bfdVehicle: le(rec, "vehicle"),
+      bfdVehicleCapacity: le(rec, "vehicleCapacity"), bfdPrimaryDriver: le(rec, "primaryDriver"),
+      bfdSecondaryDriver: le(rec, "secondaryDriver"), bfdDriverId: le(rec, "driverId"),
+      bfdCustomer: le(rec, "customerCompany"), bfdPickup: le(rec, "pickupLocation") || le(rec, "fromLocation"),
+      bfdDelivery: le(rec, "deliveryLocation") || le(rec, "toLocation"), bfdDistance: le(rec, "estimatedDistance"),
+      bfdDuration: le(rec, "tripDuration"), bfdQuantity: le(rec, "quantity"), bfdWeight: le(rec, "weight"),
+      bfdLoadedWeight: le(rec, "totalLoadedWeight"), bfdTracking: le(rec, "trackingNumber"),
+      bfdStartDate: le(rec, "startDateTime"), bfdCompletion: le(rec, "tripCompletion") || le(rec, "endDateTime"),
+      bfdStartLocation: le(rec, "fromLocation"), bfdEndLocation: le(rec, "toLocation"),
+      bfdStartTime: le(rec, "startDateTime"), bfdEndTime: le(rec, "endDateTime")
+    };
+    Object.keys(values).forEach(function(id) { w(id, values[id] || "—") });
+    w("bfdTitle", le(rec, "tripId") || "Trip details");
+    w("bfdCustomer", "Loading…"), er("panelBfmTripDetails", null), resolveBfmTripCustomer(rec).then(function(customer) {
+      /* Do not let a slower request overwrite a subsequently selected trip. */
+      if ((u("#bfdTitle") || {}).textContent === (le(rec, "tripId") || "Trip details")) w("bfdCustomer", customer || "—")
+    }).catch(function() {
+      w("bfdCustomer", le(rec, "customerCompany") || "—")
+    })
+  }
+
+  /* Customer is owned by the linked Booking, not by Trip_Dispatch. Resolve
+     it from Booking.Customer for every BFM row, with a small per-booking
+     cache so opening or rendering a record never changes its data mapping. */
+  var BFM_BOOKING_CUSTOMER_CACHE = {};
+  function resolveBfmTripCustomer(trip) {
+    var keys = bookingIdsArray(trip).map(function(v) { return String(v).trim() }).filter(Boolean),
+      cacheKey = keys.slice().sort().join("|");
+    if (!keys.length) return Promise.resolve(le(trip, "customerCompany") || "");
+    if (Object.prototype.hasOwnProperty.call(BFM_BOOKING_CUSTOMER_CACHE, cacheKey)) return Promise.resolve(BFM_BOOKING_CUSTOMER_CACHE[cacheKey]);
+    var wanted = keys.map(function(v) { return normKey(v) });
+    function tryReport(index) {
+      if (index >= BOOKING_REPORT_CANDIDATES.length) return Promise.resolve("");
+      return kr({ report_name: BOOKING_REPORT_CANDIDATES[index], field_config: "all", max_records: 500 }).then(function(res) {
+        var rows = res && res.data || [], customers = rows.filter(function(row) {
+          var refs = refListFromValue(sr(row, BOOKING_FIELD_CANDIDATES.bookingId)), candidates =
+            [String(row.ID || row.id || "")].concat(refs.ids, refs.names).map(normKey);
+          return wanted.some(function(key) { return candidates.indexOf(key) !== -1 })
+        }).map(function(row) {
+          return lookupLabel(sr(row, BOOKING_FIELD_CANDIDATES.customer))
+        }).filter(Boolean).filter(function(value, index, values) { return values.indexOf(value) === index });
+        return customers.length ? customers.join(", ") : tryReport(index + 1)
+      }).catch(function() { return tryReport(index + 1) })
+    }
+    return tryReport(0).then(function(customer) {
+      BFM_BOOKING_CUSTOMER_CACHE[cacheKey] = customer || le(trip, "customerCompany") || "";
+      return BFM_BOOKING_CUSTOMER_CACHE[cacheKey]
     })
   }
 
@@ -2198,17 +2415,15 @@
     var elapsed = Math.max(0, Math.floor((Date.now() - o.startTs) / 6e4)),
       worked = Math.max(0, elapsed - completedBreakMinutes(breakRows)),
       fresh = [];
-    o.onBreak = !1, o.breakElapsedMins = 0, o.restTargetMins = 0, o.restCompleteNotified = !1, o
-      .tierWorked = a.tiers.map(function() {
-        return worked
+    o.onBreak = !1, o.activeBfmRuleIndex = 0, o.breakElapsedMins = 0, o.restTargetMins = 0, o.restCompleteNotified = !1, o.restResolved = !1, o.completedRestRuleIndex = null, o
+      .tierWorked = a.tiers.map(function(_, i) {
+        return i === o.activeBfmRuleIndex ? worked : 0
       }), o.tierExtraMins = a.tiers.map(function() {
         return 0
       }), o.tierNotified = a.tiers.map(function(tier) {
-        return worked >= tier.maxWorkMins
+      return 0 === a.tiers.indexOf(tier) && worked >= tier.maxWorkMins
       }), o.breakCount = breakRows ? breakRows.length : 0, o.weekWorkedMins += worked;
-    a.tiers.forEach(function(tier) {
-      worked >= tier.maxWorkMins && fresh.push(tier.label)
-    });
+    worked >= a.tiers[0].maxWorkMins && fresh.push(a.tiers[0].label);
     console.warn(gr, "restore: no local snapshot; rebuilt", worked, "worked minutes (", elapsed,
       "elapsed minus completed breaks) from", breakRows ? breakRows.length : "no", "break records");
     return fresh
@@ -2484,29 +2699,24 @@
   }
   var Me = {
       4: {
-        frontAxles: 1,
-        rearAxles: 1,
-        rearDual: !1
+        /* Existing layout: do not alter its two axle positions. */
+        axlePositions: [1.7, -1.5]
       },
       6: {
-        frontAxles: 1,
-        rearAxles: 1,
-        rearDual: !0
+        /* Cab axle + tandem rear axles (three tyre pairs). */
+        axlePositions: [1.7, -.78, -1.72]
       },
       8: {
-        frontAxles: 2,
-        rearAxles: 1,
-        rearDual: !0
+        /* Cab axle + three evenly-spaced trailer axles (four pairs). */
+        axlePositions: [1.7, .38, -.82, -1.9]
       },
       12: {
-        frontAxles: 2,
-        rearAxles: 2,
-        rearDual: !0
+        /* Cab axle + five trailer axles (six pairs), matching the long
+           multi-axle reference layout. */
+        axlePositions: [1.7, .9, .1, -.7, -1.5, -2.3]
       },
       16: {
-        frontAxles: 2,
-        rearAxles: 3,
-        rearDual: !0
+        axlePositions: [1.7, 1.05, .4, -.25, -.9, -1.55, -2.2, -2.55]
       }
     },
     Fe = 4;
@@ -2514,43 +2724,26 @@
   function Be(e) {
     var t = Me[e] || Me[6],
       r = {};
-    (1 === t.frontAxles ? [1.7] : [1.95, 1.4]).forEach(function(e, n) {
-      var i = n + 1,
-        a = t.frontAxles > 1,
-        o = a ? "f" + i + "r" : "fr",
-        s = a ? "Front axle " + i + " " : "Front ";
-      r[a ? "f" + i + "l" : "fl"] = {
-        x: e,
+    t.axlePositions.forEach(function(x, index) {
+      /* Keep the original four-tyre keys (FL/FR/RL/RR) so existing
+         Vehicle Check submissions remain compatible. Additional axles
+         use stable R1/R2… keys and are independently tappable. */
+      var isFirst = 0 === index,
+        isFourTyreRear = 4 === Number(e) && 1 === index,
+        leftKey = isFirst ? "fl" : isFourTyreRear ? "rl" : "r" + index + "l",
+        rightKey = isFirst ? "fr" : isFourTyreRear ? "rr" : "r" + index + "r",
+        label = isFirst ? "Front" : "Rear axle " + index;
+      r[leftKey] = {
+        x: x,
         z: .83,
-        dual: !1,
-        label: s + "left tyre"
-      }, r[o] = {
-        x: e,
+        label: label + " left tyre"
+      }, r[rightKey] = {
+        x: x,
         z: -.83,
-        dual: !1,
-        label: s + "right tyre"
+        label: label + " right tyre"
       }
     });
-    var n = t.rearAxles,
-      dl = !1 !== t.rearDual;
-    return (1 === n ? [-1.5] : 2 === n ? [-1.3, -1.85] : [-1.05, -1.55, -2.05]).forEach(function(e,
-      t) {
-      var i = t + 1,
-        a = n > 1,
-        o = a ? "r" + i + "r" : "rr",
-        s = a ? "Rear axle " + i + " " : "Rear ";
-      r[a ? "r" + i + "l" : "rl"] = {
-        x: e,
-        z: .83,
-        dual: dl,
-        label: s + (dl ? "left tyres" : "left tyre")
-      }, r[o] = {
-        x: e,
-        z: -.83,
-        dual: dl,
-        label: s + (dl ? "right tyres" : "right tyre")
-      }
-    }), r
+    return r
   }
   var He = {},
     Ve = {},
@@ -2697,7 +2890,9 @@
     moved: !1,
     lastX: 0,
     lastY: 0,
-    rotY: -.55,
+    /* Start from the side profile so every selected tyre sits visibly
+       outside the vehicle body; drivers can still drag to inspect it. */
+    rotY: 0,
     rotX: .18,
     baseDist: 9.6,
     idleSpin: !1
@@ -2862,10 +3057,15 @@
     return t = t || Be(6), Je.wheels = {}, Object.keys(t).forEach(function(n) {
       var a = t[n],
         o = new e.Group,
-        s = [];
+        s = [],
+        /* Keep each tyre on its real left/right side. The side profile now
+           reads as the reference layouts (one tyre per axle); rotating the
+           truck exposes the matching tyres on the opposite side. */
+        visibleX = a.x,
+        visibleZ = a.z;
       (a.dual ? [
-        [-.2, -.22],
-        [.2, .22]
+        [-.22, 0],
+        [.22, 0]
       ] : [
         [0, 0]
       ]).forEach(function(pair) {
@@ -2889,7 +3089,7 @@
             w: n,
             tyre: i
           }
-        }(a.x + dx, dz);
+        }(visibleX + dx, visibleZ + dz);
         o.add(r.w);
         var n = new e.Mesh(new e.TorusGeometry(.49, .04, 10, 28), new e
           .MeshStandardMaterial(x));
@@ -2898,13 +3098,13 @@
       var d = a.dual ? .82 : .53,
         u = new e.TorusGeometry(d, .045, 8, 20, Math.PI),
         m = new e.Mesh(u, i);
-      m.position.set(a.x, 0, a.z), m.castShadow = !0, r.add(m), o.position.set(0, 0, a.z), o
+      m.position.set(visibleX, 0, visibleZ), m.castShadow = !0, r.add(m), o.position.set(0, 0, 0), o
         .userData.tyre = n;
       var p = new e.Mesh(new e.CylinderGeometry(.66, .66, a.dual ? 1.15 : .5, 16), new e
         .MeshBasicMaterial({
           visible: !1
         }));
-      p.rotation.x = Math.PI / 2, p.position.set(a.x, 0, 0), p.userData.tyre = n, o.add(p), r
+      p.rotation.x = Math.PI / 2, p.position.set(visibleX, 0, visibleZ), p.userData.tyre = n, o.add(p), r
         .add(o), Je.wheels[n] = {
           group: o,
           rings: s,
@@ -2986,7 +3186,7 @@
   }
 
   function mt() {
-    Je.rotY = -.55, Je.rotX = .18, at()
+    Je.rotY = 0, Je.rotX = .18, at()
   }
 
   function pt(e, t) {
@@ -3322,7 +3522,7 @@
       locVal, o.startLocationUrl = urlVal, o.endLocation = endLocationVal, o.startOdometer =
       odometerNum, o.tierWorked = [0, 0, 0, 0, 0], o.tierExtraMins = [0, 0, 0, 0, 0], o.tierNotified = [
         !1, !1, !1, !1, !1
-      ], o.breakElapsedMins = 0, o.onBreak = !1, o.bfmDayKey = bfmDateKey(new Date()), w(
+      ], o.tierWarned = [!1, !1, !1, !1, !1], o.activeBfmRuleIndex = 0, o.breakElapsedMins = 0, o.onBreak = !1, o.bfmDayKey = bfmDateKey(new Date()), w(
         "tripStart", startTimeVal), w("tripEnd",
         endTimeVal), w("tripStartedAt", startTimeVal), w("tripWindow", startTimeVal + " – " +
         endTimeVal), w("tripStartLoc", locVal), w("kpiStatus", "IN TRANSIT");
@@ -3498,7 +3698,30 @@
       sigImg.hidden = !0);
     podResultSigPad.hasInk = false;
     var wrap = u("#podResultSigPadWrap");
-    wrap && wrap.classList.remove("has-signature")
+    wrap && wrap.classList.remove("has-signature");
+    /* Safari can retain an old layout for a hidden fixed modal until its
+       next paint. Force a paint after replacing the POD rows so a newly
+       saved item is visible on iPhone just as it is on Android/desktop. */
+    var podView = u("#viewPodResult"),
+      podModal = u("#podResultModalBox");
+    podView && requestAnimationFrame(function() {
+      void podView.offsetHeight;
+      podModal && (podModal.scrollTop = 0)
+    })
+  }
+
+  function showPodResultView() {
+    Y("podresult");
+    var podView = u("#viewPodResult"),
+      podModal = u("#podResultModalBox");
+    if (!podView) return;
+    /* Reassert the semantic state because older iOS webviews occasionally
+       keep a previously-hidden view out of the composited fixed layer. */
+    podView.hidden = !1, podView.setAttribute("aria-hidden", "false"), void podView.offsetHeight;
+    podView.scrollTop = 0, podModal && (podModal.scrollTop = 0);
+    requestAnimationFrame(function() {
+      initPodResultSignaturePad(), podShowCompletedStamp()
+    })
   }
 
   /* ---------- Receiver signature — manual signature pad ----------
@@ -4145,7 +4368,12 @@
          silently fails and the PDF is skipped), so the scale is lowered
          for a long POD instead of always using 2x. */
       var estH = Math.max(doc.scrollHeight, 1200),
-        renderScale = Math.max(1, Math.min(2, Math.sqrt(14e6 / (PDF_RENDER_WIDTH_PX * estH))));
+        /* WebKit also has a maximum canvas SIDE length (not just a total
+           pixel limit). Respect both limits so long PODs export on iPhone
+           instead of silently producing a blank/cut-off PDF. */
+        pixelSafeScale = Math.sqrt(12e6 / (PDF_RENDER_WIDTH_PX * estH)),
+        sideSafeScale = 4096 / Math.max(PDF_RENDER_WIDTH_PX, estH),
+        renderScale = Math.max(.35, Math.min(2, pixelSafeScale, sideSafeScale));
       return window.html2canvas(doc, {
         scale: renderScale,
         useCORS: !0,
@@ -4262,14 +4490,50 @@
     btn && (btn.disabled = !0);
     btnLabel && (btnLabel.textContent = "Preparing…");
     buildPodPdf(doc).then(function(pdf) {
-      pdf.save("Proof_of_Delivery_" + fileSafeId + ".pdf"), R(
-        "Proof of Delivery downloaded as a PDF.")
+      return downloadPodPdfFile(pdf, "Proof_of_Delivery_" + fileSafeId + ".pdf")
+    }).then(function() {
+      R("Proof of Delivery downloaded as a PDF.")
     }).catch(function(err) {
       console.error(gr, "POD PDF export failed, falling back to HTML download:", err),
         downloadPodResultAsHtmlFallback(doc, fileSafeId)
     }).finally(function() {
       btn && (btn.disabled = !1), btnLabel && (btnLabel.textContent = "Download")
     })
+  }
+
+  function isAppleMobile() {
+    var ua = navigator.userAgent || "";
+    return /iP(ad|hone|od)/.test(ua) || "MacIntel" === navigator.platform && navigator.maxTouchPoints > 1
+  }
+
+  /* jsPDF.save() relies on the HTML download attribute, which iPhone Safari
+     may ignore. Prefer the native Share sheet there (Files, Save to Files,
+     AirDrop), then fall back to opening the PDF blob in Safari's viewer. */
+  function downloadPodPdfFile(pdf, filename) {
+    var blob = pdf.output("blob"),
+      file = "undefined" != typeof File ? new File([blob], filename, {
+        type: "application/pdf"
+      }) : null;
+    if (isAppleMobile()) {
+      if (file && navigator.share && (!navigator.canShare || navigator.canShare({
+          files: [file]
+        }))) return navigator.share({
+        files: [file],
+        title: "Proof of Delivery"
+      }).catch(function(err) {
+        /* Cancelling the sheet is not an export failure. */
+        if (err && "AbortError" === err.name) return;
+        throw err
+      });
+      var url = URL.createObjectURL(blob),
+        opened = window.open(url, "_blank");
+      opened || (window.location.href = url), setTimeout(function() {
+        URL.revokeObjectURL(url)
+      }, 6e4);
+      return Promise.resolve()
+    }
+    pdf.save(filename);
+    return Promise.resolve()
   }
 
   /* Save button — bottom-center of the POD Saved popup. Separate from
@@ -4522,7 +4786,7 @@
           note: "—"
         }
       })
-    }), u("#podNotes").value = "", sigPadClear(), t && (t.value = ""), Y("podresult");
+    }), u("#podNotes").value = "", sigPadClear(), t && (t.value = ""), showPodResultView();
     var a = Q.findIndex(function(e) {
       return "next" === e.status
     });
@@ -4746,7 +5010,10 @@
       restHrs = Math.max(0, +(totalHrs - maxHrs).toFixed(2)),
       msg = "Work period logged — " + totalHrs + "h worked (limit " + maxHrs +
       "h). Rest required: " + restHrs + "h.";
-    pushBfmNotification(restHrs > 0 ? "amber" : "green", msg);
+    /* This end-of-trip summary is recorded to Driver_BFM_Notification below
+       for audit/reporting purposes, but is no longer surfaced to the driver
+       as an in-app notification/toast (per request — it was confusing when
+       shown for very short work periods). */
     if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return void console.warn(gr,
       "preview mode — Driver_BFM_Notification not saved");
     try {
@@ -5411,7 +5678,8 @@
       events: [],
       cap: 500
     },
-    REST_WARN_TIMER = null;
+    REST_WARN_TIMER = null,
+    REST_COMPLETE_TIMER = null;
 
   function evStorePrune(st) {
     var cut = Date.now() - a.scoreWindowDays * 864e5;
@@ -5686,27 +5954,38 @@
 
   /* ---------- rest ends in 2 minutes ---------- */
   function clearRestWarnTimer() {
-    REST_WARN_TIMER && (clearTimeout(REST_WARN_TIMER), REST_WARN_TIMER = null)
+    REST_WARN_TIMER && (clearTimeout(REST_WARN_TIMER), REST_WARN_TIMER = null),
+      REST_COMPLETE_TIMER && (clearTimeout(REST_COMPLETE_TIMER), REST_COMPLETE_TIMER = null)
   }
 
   function armRestWarnTimer() {
     clearRestWarnTimer();
-    if (!o.onBreak || o.restWarnNotified || !o.breakStartTs) return;
-    var target = o.restTargetMins || a.tiers[0].restMins;
+    if (!o.onBreak || !o.restTargetMins || o.restWarnNotified || !o.breakStartTs) return;
+    var target = o.restTargetMins || a.tiers[o.activeBfmRuleIndex || 0].restMins;
     if (target <= a.restWarnMins) return;
     var delay = o.breakStartTs + (target - a.restWarnMins) * 6e4 - Date.now();
     delay > 0 && (REST_WARN_TIMER = setTimeout(maybeNotifyRestEnding, delay))
   }
 
+  function armRestCompleteTimer() {
+    if (!o.onBreak || !o.restTargetMins || o.restCompleteNotified || !o.breakStartTs) return;
+    var target = o.restTargetMins || a.tiers[o.activeBfmRuleIndex || 0].restMins,
+      delay = o.breakStartTs + target * 6e4 - Date.now();
+    if (delay <= 0) return void(!o.restCompleteNotified && (o.restCompleteNotified = !0, notifyRestComplete()));
+    REST_COMPLETE_TIMER = setTimeout(function() {
+      o.tripStarted && o.onBreak && !o.restCompleteNotified && (o.restCompleteNotified = !0,
+        notifyRestComplete(), saveTripSnapshot())
+    }, delay)
+  }
+
   function maybeNotifyRestEnding() {
     if (!o.tripStarted || !o.onBreak || o.restWarnNotified) return;
-    var target = o.restTargetMins || a.tiers[0].restMins;
+    var target = o.restTargetMins || a.tiers[o.activeBfmRuleIndex || 0].restMins;
     if (target <= a.restWarnMins) return;
     var remainingMs = o.breakStartTs ? o.breakStartTs + 6e4 * target - Date.now() : 6e4 * (
       target - o.breakElapsedMins);
     if (remainingMs <= 0 || remainingMs > 6e4 * a.restWarnMins + 1500) return;
-    o.restWarnNotified = !0, clearRestWarnTimer(), notifyRestEndingSoon(Math.max(1, Math.min(a
-      .restWarnMins, Math.ceil(remainingMs / 6e4)))), saveTripSnapshot()
+    o.restWarnNotified = !0, clearRestWarnTimer(), notifyRestEndingSoon(a.restWarnMins), saveTripSnapshot()
   }
 
   function notifyRestEndingSoon(mins) {
@@ -5930,8 +6209,13 @@
        plain string — passing that object straight to ZOHO.CREATOR.UTIL
        .setImageData()/img.src (both of which expect a string) silently
        failed and left the avatar stuck on initials. Unwrap it here first. */
-    "object" == typeof r && (r = r.url || r.display_value || r.filepath || r.downloadUrl || "");
+    r = profilePictureValue(r);
     if (!r) return;
+
+    /* A usable photo source takes precedence over initials from the moment
+       it is requested. The initials return only when the image actually
+       fails, so there is no placeholder flash for an uploaded picture. */
+    a && (a.hidden = !0);
 
     function done() {
       i.hidden = !1, a && (a.hidden = !0)
@@ -5969,7 +6253,11 @@
     }, 12e3);
     if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.UTIL && ZOHO.CREATOR.UTIL.setImageData) {
       try {
-        var call = ZOHO.CREATOR.UTIL.setImageData(i, r);
+        /* Creator SDK builds differ: older mobile webviews invoke the
+           callback while newer ones resolve a Promise (and both still fire
+           the native image load event). Supporting all three prevents the
+           initials fallback from remaining visible on iOS or Android. */
+        var call = ZOHO.CREATOR.UTIL.setImageData(i, r, ok);
         call && call.then && call.then(function() {
           i.getAttribute("src") && i.complete && i.naturalWidth && ok()
         }, function(err) {
@@ -6266,7 +6554,7 @@
     pickupLocation: ["Pickup_Location"],
     deliveryLocation: ["Delivery_Location"],
     route: ["Route"],
-    customer: ["Customer_Company_Name", "Customer_Name", "Customer", "Company_Name"],
+    customer: ["Customer", "Customer_Company_Name", "Customer_Name", "Company_Name"],
     weight: ["Weight", "Total_Weight", "Total_loaded_Weight"],
     shipmentItems: ["Shipment_Items", "Shipment_Items1", "Shipment_Item", "Items"]
   };
@@ -8019,7 +8307,7 @@
             price: it.price
           }
         })
-      }), DISPATCH_POD_RECORD_ID = null, Y("podresult")
+      }), DISPATCH_POD_RECORD_ID = null, showPodResultView()
     } finally {
       saveBtn && (saveBtn.disabled = !1)
     }
@@ -8126,6 +8414,93 @@
     })
   };
 
+  /* ---------- Driver profile photo — Employees2.Profile Picture ----------
+     Per requirement, the driver's profile photo must come from the
+     `Profile Picture` field on the `Employees2` report specifically
+     (not the Drivers/Driver report used for the rest of the profile).
+     Looked up by the logged-in driver's email, same matching pattern as
+     wr()/resolveEmployeeFormId() above. Tries a couple of likely report
+     name variants in case the report was renamed, and — like the
+     Drivers-report photo lookup — falls back to scanning every field on
+     the matched record for anything that looks like an image field if
+     none of the known Profile Picture candidates matched. Never throws:
+     any failure just leaves the existing photoPath (if any) in place. */
+  var EMPLOYEES2_REPORT_CANDIDATES = ["Employees2", "Employees_2", "Employees", "All_Employees", "Employee2"];
+
+  /* Creator image fields vary by report and SDK version: a value can be a
+     URL/path string, an upload object, or a one-item array. Normalize that
+     shape before handing it to the image renderer. */
+  function profilePictureValue(value) {
+    if (!value) return "";
+    if (Array.isArray(value)) return profilePictureValue(value[0]);
+    if ("object" != typeof value) return String(value);
+    var keys = ["url", "downloadUrl", "download_url", "filepath", "file_path", "display_value", "value", "link", "image_url"];
+    for (var idx = 0; idx < keys.length; idx++)
+      if (value[keys[idx]]) return profilePictureValue(value[keys[idx]]);
+    return ""
+  }
+
+  function employees2PhotoFromRecord(rec) {
+    var photo = profilePictureValue(sr(rec, i.photo));
+    if (photo) return photo;
+    var keys = Object.keys(rec),
+      rx = /photo|picture|image|avatar/i;
+    for (var k = 0; k < keys.length; k++)
+      if (rx.test(keys[k]) && null != rec[keys[k]] && "" !== rec[keys[k]]) {
+        photo = profilePictureValue(rec[keys[k]]);
+        if (photo) return photo
+      }
+    return ""
+  }
+
+  function fetchDriverPhotoFromEmployees2(email, employeeId, recordId) {
+    if (!window.ZOHO || !ZOHO.CREATOR || !ZOHO.CREATOR.DATA) return Promise.resolve("");
+    var trimmedEmail = String(email || "").trim(),
+      trimmedEmployeeId = String(employeeId || "").trim(),
+      trimmedRecordId = String(recordId || "").trim();
+    if (!trimmedEmail && !trimmedEmployeeId && !trimmedRecordId) return Promise.resolve("");
+    function isCurrentDriver(rec) {
+      return !!(trimmedEmail && br(sr(rec, i.email)) === br(trimmedEmail) ||
+        trimmedEmployeeId && br(sr(rec, i.id)) === br(trimmedEmployeeId) ||
+        trimmedRecordId && br(rec.ID || rec.id) === br(trimmedRecordId));
+    }
+    return function tryReport(idx) {
+      if (idx >= EMPLOYEES2_REPORT_CANDIDATES.length) return Promise.resolve("");
+      var reportName = EMPLOYEES2_REPORT_CANDIDATES[idx];
+      return kr({
+        report_name: reportName,
+        criteria: "(" + r + ' == "' + trimmedEmail.replace(/"/g, '\\"') + '")',
+        field_config: "all",
+        max_records: 5
+      }).then(function(res) {
+        var rows = (res && res.data) || [];
+        if (!rows.length) return kr({
+          report_name: reportName,
+          field_config: "all",
+          max_records: 200
+        }).then(function(res2) {
+          var all = (res2 && res2.data) || [],
+            matched = all.filter(function(rec) {
+              return isCurrentDriver(rec)
+            });
+          if (!matched.length) return tryReport(idx + 1);
+          var photo = employees2PhotoFromRecord(matched[0]);
+          return photo ? (console.log(gr, "Employees2 photo resolved (scan match) from report",
+            reportName), photo) : tryReport(idx + 1)
+        }).catch(function() {
+          return tryReport(idx + 1)
+        });
+        var matchedRow = rows.filter(isCurrentDriver)[0] || rows[0],
+          photo = employees2PhotoFromRecord(matchedRow);
+        return photo ? (console.log(gr, "Employees2 photo resolved from report", reportName),
+          photo) : tryReport(idx + 1)
+      }).catch(function(err) {
+        return console.warn(gr, "Employees2 photo lookup failed on report", reportName, err),
+          tryReport(idx + 1)
+      })
+    }(0)
+  }
+
   function Tr() {
     if (!window.ZOHO || !ZOHO.CREATOR) return a.source = "Default BFM values (preview)", yr(),
       void L();
@@ -8211,6 +8586,18 @@
           console.table(t) : console.log(t), console.log(gr,
             "Raw record returned by Zoho (all keys as-received):", e)
       }(t)
+    }).then(function() {
+      /* Fetch the profile photo from Employees2.Profile Picture for this
+         driver's email and use it in place of whatever (if anything) the
+         Drivers-report photo lookup above found — this is the field the
+         requirement specifies as the source of truth for the avatar. If
+         Employees2 has no matching record or no photo, the Drivers-report
+         value already set on s.photoPath is left untouched as a fallback. */
+      return fetchDriverPhotoFromEmployees2(e, s.id, s.recordId).then(function(photo) {
+        photo && (s.photoPath = photo)
+      }).catch(function(err) {
+        console.warn(gr, "Employees2 photo fetch failed, keeping existing photo:", err)
+      })
     }).then(function() {
       yr(), vr(), scoreRefresh(), ke().then(function() {
         L()

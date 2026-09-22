@@ -1877,7 +1877,61 @@ select {
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%
+}
+
+/* ---------- Multiple Booking IDs — compact scrollable list ----------
+   Used on the Driver BFM Log card header (#bfmLogBookingId), its "View
+   All" popup (#bfmLogViewBookingId) and each per-trip row (.trip6-bk)
+   whenever a Trip carries more than one Booking. Kept short and
+   scrollable rather than stretching the row, per request. */
+.bk-multi.trip6-bk {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip
+}
+
+.bk-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 54px;
+  overflow-y: auto;
+  padding-right: 2px
+}
+
+.bk-scroll::-webkit-scrollbar {
+  width: 4px
+}
+
+.bk-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .18);
+  border-radius: 4px
+}
+
+.bk-chip {
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis
+}
+
+.bfmtop dd.bk-multi {
+  font-weight: 700
+}
+
+.bfmtop dd .bk-scroll {
+  max-height: 48px
+}
+
+.bfmtop dd .bk-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, .35)
+}
+
+.bfmtop dd .bk-chip {
+  color: #fff
 }
 
 .trip6-grid {
@@ -2336,13 +2390,23 @@ select {
     justify-content: center
   }
 
+  /* FIX: .triptimer-actions was never given display:flex, so the
+     flex/align-self rules on its buttons below (and the .btn--break
+     align-self:stretch rule above) had no effect — the Pause button
+     stayed pill-sized instead of matching the Trip Timer's full width.
+     Making it an explicit flex column here is what actually makes the
+     Trip Timer and the Pause / Continue Driving button line up as the
+     same width, stacked with consistent spacing. */
   .triptimer-actions {
+    display: flex;
+    flex-direction: column;
     width: 100%
   }
 
   .triptimer-actions .btn--break,
   .triptimer-actions .btn--primary {
     flex: 1 1 0;
+    width: 100%;
     min-width: 0
   }
 }
@@ -8215,10 +8279,14 @@ textarea {
   }
 
   .poddoc-sheet table.order-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap
+    display: table;
+    table-layout: fixed;
+    overflow: hidden;
+    white-space: normal
   }
+
+  .poddoc-sheet table.order-table th,
+  .poddoc-sheet table.order-table td { padding: 4px 2px; font-size: 10px; overflow-wrap: anywhere }
 }
 /* --- POD Saved popup: receiver-signature upload control & PDF export --- */
 .poddoc-sheet [data-pdf-exclude] {
@@ -8740,6 +8808,53 @@ textarea {
   }
 }
 
+/* ---- Rest time reached — prominent banner on the Assigned Trip page ----
+   Shown at the very top of the page (above the trip heading/timer) the
+   moment the driver's BFM status becomes "breach" (see
+   updateRestRequiredBanner() in Script.js). Bold, high-contrast red so it
+   can't be missed, but styled consistently with the rest of the app
+   (rounded, soft shadow, same icon/alert language as .rest-alert). */
+/* ---- Rest time NOT yet reached — shown if the driver pauses/stops the
+   timer before any BFM tier actually requires a rest break (see
+   showRestNotReachedBanner() in Script.js). Amber/informational, not the
+   pulsing red used for an actual breach, and auto-dismisses itself. ---- */
+.rest-not-reached-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--amber-soft);
+  border: 1.5px solid var(--amber);
+  color: var(--amber);
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: var(--sh-1);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity .25s ease, transform .25s ease
+}
+
+.rest-not-reached-banner svg {
+  color: var(--amber);
+  margin-top: 1px
+}
+
+.rest-not-reached-banner.is-in {
+  opacity: 1;
+  transform: translateY(0)
+}
+
+@media (max-width:480px) {
+  .rest-not-reached-banner {
+    font-size: 13.5px;
+    padding: 12px 14px
+  }
+}
+
 /* ---- Driver Rest Time stamp ---- */
 .reststamp {
   flex: 0 0 auto;
@@ -8878,7 +8993,8 @@ textarea {
 
 /* ---- POD Completed stamp ---- */
 .poddoc-sheet {
-  position: relative
+  position: relative;
+  isolation: isolate
 }
 
 .poddoc-stamp {
@@ -8888,11 +9004,17 @@ textarea {
   width: min(80mm, 62%);
   height: auto;
   transform: translate(-50%, -50%);
-  opacity: .9;
+  opacity: 1;
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
-  z-index: 5
+  z-index: 100;
+  display: block;
+  padding: 5px;
+  background: rgba(255, 255, 255, .92);
+  border-radius: 8px;
+  box-shadow: 0 3px 14px rgba(111, 0, 0, .24);
+  mix-blend-mode: normal
 }
 
 .poddoc-stamp.is-slam {
@@ -8911,7 +9033,7 @@ textarea {
   }
 
   100% {
-    opacity: .9;
+    opacity: 1;
     transform: translate(-50%, -50%) scale(1) rotate(0)
   }
 }
@@ -9051,4 +9173,172 @@ input:focus-visible {
   .tile-card {
     animation: none !important
   }
+}
+
+/* Compact Driver BFM log and its selected-trip detail panel. */
+.bfm-log-card { padding-top: 12px; padding-bottom: 12px }
+.bfm-log-label { margin: 0 0 7px }
+.bfm-log-card .bfmtop { margin: 0 0 12px }
+.bfm-log-card .trip6-list { gap: 7px; max-height: none }
+.bfm-log-card .trip6-item { padding: 8px 10px }
+.bfm-log-card .trip6-hd { margin-bottom: 6px }
+.bfm-viewall { min-height: 32px; padding: 6px 11px; flex: none; font-size: 12.5px }
+.trip6-eye {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card-2);
+  cursor: pointer; font-size: 15px; line-height: 1
+}
+.trip6-eye:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-soft) }
+.panel--trip-detail {
+  top: 50%; right: auto; bottom: auto; left: 50%; width: min(720px, 94vw);
+  max-width: 94vw; max-height: min(86vh, 760px); border: 1px solid var(--line);
+  border-radius: 16px; transform: translate(-50%, -50%); box-shadow: 0 24px 72px rgba(15,39,72,.28);
+  animation: bfmDetailPop .24s cubic-bezier(.2,.8,.25,1) both
+}
+@keyframes bfmDetailPop { from { opacity: 0; transform: translate(-50%, -47%) scale(.98) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+.panel--trip-detail .panel__hd h2 { margin: 2px 0 0 }
+.bfm-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0 }
+.bfm-detail-grid > div { min-width: 0; padding: 12px 10px; border-bottom: 1px solid var(--line) }
+.bfm-detail-grid > div:nth-child(odd) { border-right: 1px solid var(--line) }
+.bfm-detail-grid dt { margin-bottom: 5px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em }
+.bfm-detail-grid dd { text-align: left; overflow-wrap: anywhere; font-size: 13px }
+@media (max-width: 560px) {
+  .card__hd:has(.bfm-viewall) { align-items: center }
+  .bfm-viewall { padding: 5px 8px; font-size: 12px }
+  .bfm-detail-grid { grid-template-columns: 1fr }
+  .bfm-detail-grid > div:nth-child(odd) { border-right: 0 }
+  .panel--trip-detail { width: calc(100vw - 20px); max-width: calc(100vw - 20px); max-height: 88vh; border-radius: 14px }
+}
+
+/* Final dashboard rhythm: shared interactive feedback and predictable
+   spacing across phones, tablets and desktop without touching data UI. */
+.view { padding-bottom: 28px }
+.section { scroll-margin-top: 18px }
+.card__hd { gap: 12px; min-height: 58px }
+.card__hd > :last-child { margin-left: auto }
+.card, .tile-card, .qa__card { overflow: hidden }
+.btn, .triprow__view, .trip6-eye, .avbtn { transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, border-color .18s ease }
+.btn:active, .triprow__view:active, .trip6-eye:active, .avbtn:active { transform: translateY(1px) scale(.985) }
+@media (hover:hover) {
+  .card:hover { box-shadow: 0 12px 28px rgba(15,39,72,.10) }
+  .btn:hover, .triprow__view:hover { transform: translateY(-1px) }
+}
+@media (max-width: 760px) {
+  .view { padding-bottom: 20px }
+  .card__hd { min-height: 52px; padding: 13px 14px }
+  .card__bd { padding: 14px }
+  .section + .section { margin-top: 14px }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel--trip-detail, .btn, .triprow__view, .trip6-eye, .avbtn { animation: none; transition: none }
+}
+
+/* POD preview stays inside the viewport on phones; the exported A4 PDF is
+   unchanged because these rules only affect the on-screen saved view. */
+@media (max-width: 720px) {
+  #viewPodResult:not([hidden]) { align-items: stretch; overflow: hidden }
+  .podresult-modalbox {
+    padding: max(48px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .poddoc-sheet-outer { min-width: 0; padding: 10px; overflow-x: hidden }
+  .poddoc-sheet { width: 100%; max-width: 100%; min-width: 0; overflow: hidden }
+  .poddoc-sheet table.order-table { width: 100%; max-width: 100%; table-layout: fixed }
+}
+
+/* Driver BFM Log — compact, three-part active card and clear trip rows. */
+.bfm-log-card { padding: 14px 16px 16px; background: linear-gradient(180deg,#f8fbff 0,#fff 46%); }
+.bfm-log-card .bfmtop { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; padding: 16px 18px; }
+.bfm-log-card .bfmtop > div { padding: 0 16px; border-right: 1px solid rgba(111,190,255,.38) }
+.bfm-log-card .bfmtop > div:nth-child(3n+1) { padding-left: 0 }
+.bfm-log-card .bfmtop > div:nth-child(3n) { border-right: 0 }
+.bfm-log-card .bfmtop > div:nth-child(n+4) { margin-top: 14px }
+.bfm-log-card .trip6-item { position: relative; padding: 17px 58px 17px 18px; border-color: #dbe7f5; border-radius: 14px; box-shadow: 0 6px 18px rgba(20,63,118,.05) }
+.bfm-log-card .trip6-item::before { content:""; position:absolute; inset:0 auto 0 0; width: 5px; border-radius:14px 0 0 14px; background:#2d7ef7 }
+.bfm-log-card .trip6-item:nth-child(even)::before { background:#19b877 }
+.bfm-log-card .trip6-hd { font-size: 16px; margin-bottom: 14px }
+.bfm-log-card .trip6-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 28px }
+.bfm-log-card .trip6-grid > div:nth-child(odd) { border-right:1px solid #e1ebf7; padding-right:18px }
+.bfm-log-card .trip6-grid dt { color:#607da6; font-size:12px; margin-bottom:5px }
+.bfm-log-card .trip6-grid dd { color:#102b59; font-size:14px }
+.bfm-log-card .trip6-eye { position:absolute; top:16px; right:14px; width:38px; height:38px; color:#163d78; border-color:#ceddf0; background:#fff }
+
+/* Trip record is intentionally a centered, desktop-width dialog with an
+   internal scroll region; the mobile breakpoint reduces it to one column. */
+.panel--trip-detail { width:min(1120px,94vw); max-height:90vh; border-color:#d8e7f8; background:#fff }
+.panel--trip-detail .panel__hd { padding:20px 26px; background:linear-gradient(135deg,#fff,#f2f8ff); }
+.panel--trip-detail .panel__bd { padding:18px 22px 24px; background:#fbfdff }
+.bfm-detail-grid { border:1px solid #dceafa; border-radius:13px; overflow:hidden; background:#fff }
+.bfm-detail-grid > div { padding:13px 16px; border-color:#e1ebf6 }
+.bfm-detail-grid dt { color:#5c7ca9; font-weight:700 }
+.bfm-detail-grid dd { color:#092b61; font-size:14px; font-weight:700 }
+@media (max-width: 700px) {
+  .bfm-log-card { padding:12px }
+  .bfm-log-card .bfmtop { grid-template-columns:1fr 1fr; padding:14px; }
+  .bfm-log-card .bfmtop > div { padding:0 10px; border-right:0; }
+  .bfm-log-card .bfmtop > div:nth-child(odd) { padding-left:0 }
+  .bfm-log-card .bfmtop > div:nth-child(even) { border-left:1px solid rgba(111,190,255,.28) }
+  .bfm-log-card .bfmtop > div:nth-child(n+3) { margin-top:14px }
+  .bfm-log-card .trip6-item { padding:15px 55px 15px 16px }
+  .bfm-log-card .trip6-grid { gap:12px 14px }
+  .bfm-log-card .trip6-grid > div:nth-child(odd) { padding-right:10px }
+  .panel--trip-detail .panel__hd { padding:16px 18px }
+  .panel--trip-detail .panel__bd { padding:12px }
+}
+
+/* Keep the Driver BFM overview dense enough to scan without sacrificing
+   touch targets or the selected-trip detail popup. */
+.bfm-log-card { padding: 10px 12px 12px; }
+.bfm-log-card .bfmtop { margin-bottom: 8px; padding: 10px 12px; }
+.bfm-log-card .bfmtop > div { padding: 0 10px; }
+.bfm-log-card .bfmtop > div:nth-child(n+4) { margin-top: 9px; }
+.bfm-log-card .trip6-list { gap: 6px; }
+.bfm-log-card .trip6-item { padding: 10px 48px 10px 13px; border-radius: 11px; }
+.bfm-log-card .trip6-hd { margin-bottom: 7px; font-size: 14px; }
+.bfm-log-card .trip6-grid { gap: 7px 14px; }
+.bfm-log-card .trip6-grid dt { font-size: 10.5px; margin-bottom: 2px; }
+.bfm-log-card .trip6-grid dd { font-size: 12.5px; }
+.bfm-log-card .trip6-eye { top: 9px; right: 9px; width: 32px; height: 32px; }
+@media (max-width: 700px) {
+  .bfm-log-card { padding: 10px; }
+  .bfm-log-card .bfmtop { padding: 10px; }
+  .bfm-log-card .bfmtop > div:nth-child(n+3) { margin-top: 9px; }
+}
+
+/* Last 2 trips is a scan-friendly summary, so keep its two rows compact
+   while preserving the existing two-column details and touch target. */
+.bfm-log-card .trip6-list { margin: 0; }
+.bfm-log-card .trip6-empty { padding: 10px 0; }
+@media (min-width: 701px) {
+  .bfm-log-card .trip6-item { min-height: 0; }
+}
+
+/* POD result: Safari's visual viewport changes as browser controls appear.
+   Use dynamic viewport units with a WebKit fallback and one vertical scroll
+   owner, so a freshly saved POD remains visible without horizontal clipping. */
+#viewPodResult[hidden] { display: none !important; }
+#viewPodResult:not([hidden]) {
+  height: 100vh;
+  height: 100dvh;
+  min-height: -webkit-fill-available;
+  overflow: hidden;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+.podresult-modalbox {
+  min-width: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 720px) {
+  #viewPodResult:not([hidden]) { align-items: stretch; padding: 0; }
+  .podresult-modalbox {
+    height: 100vh;
+    height: 100dvh;
+    max-height: -webkit-fill-available;
+    padding: max(52px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    overflow-x: hidden;
+  }
+  .poddoc-sheet-outer { width: 100%; max-width: 100%; overflow-x: hidden; }
+  .poddoc-sheet { width: 100%; max-width: 100%; min-width: 0; }
 }
