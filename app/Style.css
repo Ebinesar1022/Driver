@@ -1143,9 +1143,16 @@ select {
 }
 
 .kpis {
+  /* gap/grid-auto-rows/align-items restated here to match the values
+     actually in effect (see the later ".kpis,...{gap:...}" consistency
+     passes further down this file, which win the cascade) — kept there
+     too since .kpis--metrics still depends on that shared rule, but the
+     source of truth for plain .kpis now matches what's declared here. */
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 18px;
+  gap: 12px;
+  grid-auto-rows: 1fr;
+  align-items: stretch;
   perspective: 1200px
 }
 
@@ -1155,15 +1162,22 @@ select {
 }
 
 .kpi {
+  /* padding/justify-content/height restated to match the values actually
+     in effect (later same-specificity rules further down override the
+     20px 22px 22px this used to say — see the "smaller gap" pass near
+     the responsive breakpoints section) so this declaration isn't
+     misleading about what actually renders. */
   --k-accent: var(--k-blue);
   overflow: hidden;
   isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  justify-content: space-between;
   text-align: left;
   min-height: 168px;
-  padding: 20px 22px 22px;
+  height: 100%;
+  padding: 14px 16px 16px;
   background: linear-gradient(158deg, #fffdfa 0%, var(--kpi-bg) 48%, #f3e7d8 100%);
   border: 1px solid rgba(160, 143, 124, .2);
   border-radius: var(--r-lg);
@@ -1273,9 +1287,12 @@ select {
 }
 
 .kpi__sub {
+  /* margin-top restated: a later rule sets it to 8px, then a rule after
+     that sets it to 0, which is the value that actually wins/renders. */
   font-size: 13px;
   color: #8a7b6b;
-  min-height: 2.6em
+  min-height: 2.6em;
+  margin-top: 0
 }
 
 .kpis--metrics+.section,
